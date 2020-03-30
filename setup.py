@@ -6,7 +6,7 @@ See:
     https://packaging.python.org/en/latest/distributing.html
 '''
 
-from setuptools import setup
+from setuptools import setup, find_packages
 from os import listdir
 from os.path import isfile, join
 
@@ -22,19 +22,19 @@ def discover_creators():
                 'creator.py'
             ]
         ]
-    return [f'{source} = src.creators.{source}:{source.title()}' for source in files]
+    return ['{source} = src.creators.{source}:{source_title}'.format(source=source, source_title=source.title()) for source in files]
 
 # launch setup
 setup(
     name = 'pyats.contrib',
-    version = '20.2',
+    version = '20.3',
 
     # descriptions
     description = 'Open source package for pyATS framework extensions.',
     long_description = read('README.md'),
 
     # the project's main homepage.
-    url = 'https://developer.cisco.com/site/pyats/',
+    url = 'https://developer.cisco.com/pyats/',
 
     # author details
     author = 'Cisco Systems Inc.',
@@ -44,6 +44,9 @@ setup(
     license = 'Apache 2.0',
 
     classifiers = [
+        'Development Status :: 6 - Mature',
+        'Development Status :: 5 - Production/Stable',
+        'Environment :: Console',
         'Intended Audience :: Developers',
         'Intended Audience :: Telecommunications Industry',
         'Intended Audience :: Information Technology',
@@ -51,6 +54,7 @@ setup(
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: MacOS',
         'Operating System :: POSIX :: Linux',
+        'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.5',
@@ -62,6 +66,17 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     
+    # project packages
+    packages = find_packages(where = 'src'),
+
+    # project directory
+    package_dir = {
+        '': 'src',
+    },
+
+    # additional package data files that goes into the package itself
+    package_data = {},
+
     # project keywords
     keywords = 'genie pyats test automation open source contrib',
 

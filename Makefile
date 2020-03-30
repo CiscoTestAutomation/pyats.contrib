@@ -1,48 +1,13 @@
-################################################################################
-#                                                                              #
-#                      Cisco Systems Proprietary Software                      #
-#        Not to be distributed without consent from Test Technology            #
-#                            Cisco Systems, Inc.                               #
-#                                                                              #
-################################################################################
-#                             pyats.contrib
-#
-# Author:
-#   Siming Yuan        (siyuan@cisco.com)    - CSG
-#   Jean-Benoit Aubin  (jeaubin@cisco.com)   - CSG
-#
-# Support:
-#    python-core@cisco.com
-#
-# Version:
-#   v2.1
-#
-# Date:
-#   April 2018
-#
-# About This File:
-#   This script will build individual pyats.contrib modules into a Python PyPI package.
-#
-################################################################################
 
 # Variables
-PKG_NAME      = pyats.contrib
 BUILD_DIR     = $(shell pwd)/__build__
-WATCHERS      = asg-genie-dev@cisco.com
-HEADER        = [Watchdog]
-PYPIREPO      = pypitest
+DIST_DIR      = $(BUILD_DIR)/dist
 PYTHON		  = python
 
-# Internal variables.
-# (note - build examples & templates last because it will fail uploading to pypi
-#  due to duplicates, and we'll for now accept that error)
-PYPI_PKGS      = testbed_creator
+DEPENDENCIES = ansible requests xlrd xlrd xlwt xlsxwriter
 
-ALL_PKGS       = $(PYPI_PKGS)
-
-.PHONY: help docs clean check devnet\
-	develop undevelop install_build_deps
-	uninstall_build_deps
+.PHONY: check help clean package develop undevelop all \
+        install_build_deps uninstall_build_deps
 
 help:
 	@echo "Please use 'make <target>' where <target> is one of"
@@ -54,13 +19,8 @@ help:
 	@echo " help                  display this help"
 	@echo " develop               set all package to development mode"
 	@echo " undevelop             unset the above development mode"
-	@echo " devnet                Build DevNet package."
-	@echo " install_build_deps    install pyats-distutils"
-	@echo " uninstall_build_deps  remove pyats-distutils"
-	@echo ""
-
-devnet: all
-	@echo "Completed building DevNet packages"
+	@echo " install_build_deps    install build dependencies"
+	@echo " uninstall_build_deps  remove build dependencies"
 	@echo ""
 
 install_build_deps:
@@ -68,9 +28,6 @@ install_build_deps:
 
 uninstall_build_deps:
 	@echo "nothing to do"
-
-docs:
-	@echo "No documentation to build for pyats.contrib"
 
 clean:
 	@echo ""
@@ -90,6 +47,7 @@ develop:
 	@echo ""
 	@echo "--------------------------------------------------------------------"
 	@echo "Setting up development environment"
+	@pip install $(DEPENDENCIES)
 	@python setup.py develop --no-deps -q
 	@echo ""
 	@echo "Done."
@@ -104,14 +62,14 @@ undevelop:
 	@echo "Done."
 	@echo ""
 
-all: $(ALL_PKGS)
+all: package
 	@echo ""
 	@echo "Done."
 	@echo ""
 
-package: $(ALL_PKGS)
+package: 
 	@echo ""
-	@echo "Done."
+	@$(PYTHON) setup.py bdist_wheel --dist-dir=$(DIST_DIR)
 	@echo ""
 
 check:
