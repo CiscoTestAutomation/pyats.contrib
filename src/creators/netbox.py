@@ -235,8 +235,10 @@ class Netbox(TestbedCreator):
 
             # If we did not find a valid OS type for device, we skip it
             if not is_valid:
-                logger.warning(f"OS type is not valid for {device_name}. " + \
-                    "Skipping device...")
+                logger.warning(
+                    "OS type is not valid for {}. ".format(device_name) +
+                    "Skipping..."
+                )
                 
                 # Delete the device from testbed
                 del data[device_name]
@@ -257,8 +259,10 @@ class Netbox(TestbedCreator):
 
             # If no interface response are received, we skip the device
             if not interface_response:
-                logger.warning(f"No interface found for {device_name}. " + \
-                    "Skipping device...")
+                logger.warning(
+                    "No interface found for {}. ".format(device_name) +
+                    "Skipping device..."
+                )
 
                 # Delete device data from testbed
                 del data[device_name]
@@ -303,14 +307,16 @@ class Netbox(TestbedCreator):
 
             # If no primary IP found for this device, then we stop and skip
             if not found_ip:
-                logger.warning(f"Connection IP not found for {device_name}. " +
-                    "Skipping device...")
+                logger.warning(
+                    "Connection IP not found for {}. ".format(device_name) +
+                    "Skipping device..."
+                )
                 
                 del data[device_name]
                 continue
             
             # Request user to manually enter their credentials for each device
-            logger.info(f"Connection Credentials for {device_name}:")
+            logger.info("Connection Credentials for {}:".format(device_name))
 
             username = input("Username: ")
             password = input("Password: ")

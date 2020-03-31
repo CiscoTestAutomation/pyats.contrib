@@ -10,26 +10,68 @@ from .creator import TestbedCreator
 logger = logging.getLogger(__name__)
 
 class Template(TestbedCreator):
+    """ Template class (TestbedCreator)
+
+    Creator for the 'template' source. Generates a CSV or Excel template with 
+    the nesscary fields to create a testbed. The template can then be populated
+    with device data, and converted to testbeds via the 'file' creator.
+
+    Args:
+        add_keys (list) default=None: Any additional keys that should be added
+            to the generated template.
+
+    CLI Argument         |  Class Argument
+    -----------------------------------------------
+    --add-keys k1 k2 ... |  add_keys=[k1, k2,...]
+
+    pyATS Examples:
+        pyats create testbed template --output=testbed.yaml
+
+    Examples:
+        # Create a CSV file template
+        creator = Template()
+        creator.to_testbed_file("template.csv")
+
+    """
+
     def _init_arguments(self):
+        """ Specifies the required arguments for the creator.
+
+        Returns:
+            Dict: Arguments for the creator.
+
+        """
         return {
             'optional': { 'add_keys': None }
         }
 
-    def to_testbed_file(self, output):
-        self._output = output 
+    def to_testbed_file(self, output_location):
+        """ Saves the template file.
+
+        Args:
+            output_location ('str'): Where to save the file.
+        
+        Returns:
+            bool: Indication that the operation is successful or not.
+        
+        """
+        self._output = output_location 
         self._generate()
         return True
 
     def to_testbed_object(self):
+        """ Creates testbed object from the source data.
+        
+        Returns:
+            Testbed: The created testbed.
+        
+        """
         return None
 
     def _generate(self):
-        """ generate the template excel/csv file
+        """ Core implementation of how the template is created.
 
-        Returns
-            None
         """
-
         # if supplied additional keys, add to self.keys
         if self._add_keys:
             self._keys.extend(list(map(lambda x: x.lower(), self._add_keys)))
@@ -44,25 +86,31 @@ class Template(TestbedCreator):
         else:
             raise Exception('File type is not csv or excel')
 
-        logger.info('Template file generated: {f}'.format(f=self._output))
+        logger.info('Template file generated: {}'.format(self._output))
         exit()
 
-    # write keys to xls csv
     def _write_csv(self, output):
+        """ Helper for writing keys to CSV.
+        
+        """
         with open(output, 'w') as f:
             writer = csv.writer(f)
             writer.writerow(self._keys)
 
-    # write keys to xls with xlwt
     def _write_xls(self, output):
+        """ Helper for writing keys to XLS.
+        
+        """
         wb = xlwt.Workbook()
         ws = wb.add_sheet('testbed')
         for i, k in enumerate(self._keys):
             ws.write(0, i, k)
         wb.save(output)
 
-    # write keys to xlsx with xlsxwriter
     def _write_xlsx(self, output):
+        """ Helper for writing keys to XLSX.
+        
+        """
         wb = xlsxwriter.Workbook(output)
         ws = wb.add_worksheet('testbed')
         ws.write_row('A1', self._keys)

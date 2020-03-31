@@ -7,7 +7,44 @@ from pyats.topology import loader
 from .creator import TestbedCreator
 
 class File(TestbedCreator):
+    """ File class (TestbedCreator)
+
+    Creator for the 'file' source. Takes in a CSV or Excel file and outputs the
+    corresponding testbed object or file. Alternatively, it can take in a folder
+    as path and converts all the CSV and Excel files inside.
+
+    Args:
+        path (str): The path of the input CSV/Excel file or a folder.
+        recurse (bool) default=False: If a folder is passed in, whether or not 
+            traversal should include subdirectories.
+        encode_password (bool) default=False: Should generated testbed encode 
+            its passwords.
+
+    CLI Argument        |  Class Argument
+    ---------------------------------------------
+    --path=value        |  path=value
+    --encode-password   |  encode_password=True
+    -r                  |  recurse=True
+
+    pyATS Examples:
+        pyats create testbed file --path=test.csv --output=testbed.yaml
+        pyats create testbed file --path=folder --output=testbeds -r
+
+    Examples:
+        # Create testbed file from test.csv with encoded password
+        creator = File(path="test.csv", encode_password=True)
+        creator.to_testbed_file("testbed.yaml")
+        creator.to_testbed_object()
+
+    """
+
     def _init_arguments(self):
+        """ Specifies the required arguments for the creator.
+
+        Returns:
+            Dict: Arguments for the creator.
+
+        """
         return {
             'required': ['path'],
             'optional': {
@@ -17,6 +54,15 @@ class File(TestbedCreator):
         }
 
     def to_testbed_file(self, output_location):
+        """ Saves the source data as a testbed file.
+
+        Args:
+            output_location ('str'): Where to save the file.
+        
+        Returns:
+            bool: Indication that the operation is successful or not.
+        
+        """
         testbed = self._generate()
 
         if isinstance(testbed, list):
@@ -30,6 +76,12 @@ class File(TestbedCreator):
         return True
 
     def to_testbed_object(self):
+        """ Creates testbed object from the source data.
+        
+        Returns:
+            Testbed: The created testbed.
+        
+        """
         testbed = self._generate()
         
         if isinstance(testbed, list):
@@ -38,6 +90,12 @@ class File(TestbedCreator):
             return self._create_testbed(testbed)
 
     def _generate(self):
+        """ Core implementation of how the testbed data is created.
+
+        Returns: 
+            dict: The intermediate testbed dictionary.
+
+        """
         if not os.path.exists(self._path):
             raise FileNotFoundError('File or directory does not exist: %s' 
                                                                 % self._path)
@@ -77,11 +135,14 @@ class File(TestbedCreator):
         return result
 
     def _read_device_data(self, file):
-        """ Read device data based on file type
-        Args
-            file (`str`): filename to read
+        """ Read device data based on file type.
+
+        Args:
+            file ('str'): Path of the file.
+        
         Returns:
-            List of Dicts containing device data
+            list: List of dictionaries containing device data.
+
         """
         _, extension = os.path.splitext(file)
         # check if file is csv or xls
@@ -99,13 +160,15 @@ class File(TestbedCreator):
         return devices
 
     def _read_csv(self, file_name):
-        """ read csv file containing device data
+        """ Reads CSV file containing device data.
 
         Args:
-            file_name(`str`): name of the csv file
+            file_name ('str'): Name of the CSV file.
 
         Returns:
-             list of dict containing device attributes from each row of the file
+            list: List of dictionaries containing the device attributes from 
+                each row of the file.
+
         """
         row_lst = []
         with open(file_name, 'r') as f:
@@ -118,13 +181,15 @@ class File(TestbedCreator):
         return row_lst
 
     def _read_excel(self, file_name):
-        """ read excel file containing device data
+        """ Read Excel file containing device data.
 
         Args:
-            file_name(`str`): name of the excel file
+            file_name ('str'): name of the excel file
 
         Returns:
-             list of dict containing device attributes from each row of the file
+            list: List of dictionaries containing device attributes from each
+                row of the file.
+
         """
         row_lst = []
         ws = xlrd.open_workbook(file_name).sheet_by_index(0)

@@ -7,9 +7,43 @@ from .creator import TestbedCreator
 logger = logging.getLogger(__name__)
 
 class Interactive(TestbedCreator):
+    """ Interactive class (TestbedCreator)
+
+    Creator for the 'interactive' source. Runs a console script to prompt step 
+    by step questions and generating the corresponding testbed object or file 
+    as an output.
+
+    Args:
+        add_keys (list) default=None: Any additional keys that should be added
+            to the testbed.
+        encode_password (bool) default=False: Should generated testbed encode 
+            its passwords.
+
+    CLI Argument         |  Class Argument
+    -----------------------------------------------
+    --add-keys k1 k2 ... |  add_keys=[k1, k2,...]
+    --encode-password    |  encode_password=True
+
+    pyATS Examples:
+        pyats create testbed interactive --output=testbed.yaml
+
+    Examples:
+        # Create testbed file from CLI with additional keys
+        creator = Interactive(encode_password=True, add_keys=['time', 'date'])
+        creator.to_testbed_file("testbed.yaml")
+        creator.to_testbed_object()
+
+    """
+
     _VALID_ANSWER = {'yes': True, 'y': True, 'no': False, 'n': False}
 
     def _init_arguments(self):
+        """ Specifies the required arguments for the creator.
+
+        Returns:
+            Dict: Arguments for the creator.
+
+        """
         return {
             'optional': {
                 'encode_password': False,
@@ -18,7 +52,13 @@ class Interactive(TestbedCreator):
         }
 
     def _prompt_password(self, msg):
-        """prompt user to enter password, set to %ASK{} if nothing entered"""
+        """ Prompts user to enter password, and set to '%ASK{}' if nothing 
+            entered.
+
+        Returns:
+            str: The password that the user entered.
+
+        """
         password = getpass.getpass(prompt=msg)
         if not password:
             return '%ASK{}'
@@ -26,13 +66,17 @@ class Interactive(TestbedCreator):
             return password
 
     def _get_info(self, msg, iterable=None, invalid=False):
-        """prompt input from user, validate input if provided iterable
-        Args:
-            msg (`str`): prompt message
-            iterable (`iterable`) iterable object that contains the 
-                valid/invalid answers
-            invalid (`bool`) flag that tells iterable is invalid answers
+        """ Prompts input from user, validating the input if iterable is
+            provided.
 
+        Args:
+            msg ('str'): The prompt message.
+            iterable ('iterable'): Iterable object that contains the 
+                valid/invalid answers.
+            invalid ('bool'): Flag that tells if iterable is invalid answer.
+
+        Returns:
+            str: The user's input.
         """
         response = ''
 
@@ -49,13 +93,11 @@ class Interactive(TestbedCreator):
         return response
 
     def _generate(self):
-        """ prompt the user to enter device data
+        """ Core implementation of how the testbed data is created.
 
-        Args:
-            None
+        Returns: 
+            dict: The intermediate testbed dictionary.
 
-        Returns:
-            list of dict containing device attributes from user input
         """
         # Make sure output isn't a directory
         logger.info('Start creating Testbed yaml file ...')
