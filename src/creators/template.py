@@ -5,9 +5,8 @@ import csv
 import os
 import logging
 
+from pyats.topology import Testbed
 from .creator import TestbedCreator
-
-logger = logging.getLogger(__name__)
 
 class Template(TestbedCreator):
     """ Template class (TestbedCreator)
@@ -17,12 +16,15 @@ class Template(TestbedCreator):
     with device data, and converted to testbeds via the 'file' creator.
 
     Args:
-        add_keys (list) default=None: Any additional keys that should be added
+        add_keys ('list') default=None: Any additional keys that should be added
             to the generated template.
+        add_custom_keys ('list') default=None: Any additional custom keys that 
+            should be added to the generated template.
 
-    CLI Argument         |  Class Argument
-    -----------------------------------------------
-    --add-keys k1 k2 ... |  add_keys=[k1, k2,...]
+    CLI Argument                |  Class Argument
+    -----------------------------------------------------------------
+    --add-keys k1 k2 ...        |  add_keys=['k1', 'k2', ...]
+    --add-custom-keys k1 k2 ... |  add_custom_keys=['k1', 'k2', ...]
 
     pyATS Examples:
         pyats create testbed template --output=testbed.yaml
@@ -35,14 +37,20 @@ class Template(TestbedCreator):
     """
 
     def _init_arguments(self):
-        """ Specifies the required arguments for the creator.
+        """ Specifies the arguments for the creator.
 
         Returns:
-            Dict: Arguments for the creator.
+            dict: Arguments for the creator.
 
         """
+        self._cli_list_arguments.append('--add-keys')
+        self._cli_list_arguments.append('--add-custom-keys')
+
         return {
-            'optional': { 'add_keys': None }
+            'optional': { 
+                'add_keys': None,
+                'add_custom_keys': None
+            }
         }
 
     def to_testbed_file(self, output_location):
@@ -66,15 +74,21 @@ class Template(TestbedCreator):
             Testbed: The created testbed.
         
         """
-        return None
+        return Testbed(name="testbed")
 
     def _generate(self):
         """ Core implementation of how the template is created.
 
         """
-        # if supplied additional keys, add to self.keys
+        # If supplied additional keys, add to self.keys
         if self._add_keys:
-            self._keys.extend(list(map(lambda x: x.lower(), self._add_keys)))
+            self._keys.extend(key.lower() for key in self._add_keys)
+
+        # If supplied custom keys, add converted custom keys
+        if self._add_custom_keys:
+            self._keys.extend("custom:{}".format(key.lower())
+                                            for key in self._add_custom_keys)
+
         # get file extension
         extension = os.path.splitext(self._output)[-1]
         if extension == '.csv':
@@ -85,9 +99,6 @@ class Template(TestbedCreator):
             self._write_xlsx(self._output)
         else:
             raise Exception('File type is not csv or excel')
-
-        logger.info('Template file generated: {}'.format(self._output))
-        exit()
 
     def _write_csv(self, output):
         """ Helper for writing keys to CSV.

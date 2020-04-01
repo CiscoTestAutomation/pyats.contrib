@@ -5,27 +5,54 @@ import logging
 import sys
 import argparse
 
-from pyats.topology import Testbed, Device, Interface
 from pyats.utils.secret_strings import SecretString
 from pyats.topology.loader.base import BaseTestbedLoader
 
 logger = logging.getLogger(__name__)
 
 class TestbedCreator(BaseTestbedLoader):
-    """
-    Abstract base class for testbed conversion actions.
+    """ TestbedCreator class (BaseTestbedLoader)
 
+    The base testbed creator class. All testbed creators must inherit this class
+    in order to properly integrate with pyATS CLI.
+
+    You must override the '_generate' method in the derived class to specify the
+    appropriate behaviour for your source. To add arguments to your derived
+    class, simply override '_init_arguments' to return a dictionary of required
+    or optional arguments. See the function for more information.
+
+    Examples:
+        # Example demonstrating the creation of a MySQL loader
+        class Mysql(TestbedCreator):
+            def _init_arguments(self):
+                return {
+                    "required": ["sql_username", "sql_password"]
+                    "optional": {
+                        "sql_table": "devices"
+                    }
+                }
+
+            def _generate(self):
+                # <Parsing Logic and Code>
+                return testbed_data
+
+        # Instantiation and usage
+        creator = Mysql(sql_username='root', sql_password='admin')
+        creator.to_testbed_file('tesbed.yaml')
+        creator.to_testbed_object()
+    
     """
-    _result = {'success': {}, 'errored':{}, 'warning':{}}
-    _keys = ['hostname','ip','username', 'password', 'protocol', 'os']
 
     def __init__(self, **kwargs):
-        """
-        Instantiates the testbed action with appropriate arguments.
+        """ Instantiates the testbed creator with appropriate arguments.
         
         """
-        kwargs.update(self._parse_cli())
+        self._result = {'success': {}, 'errored':{}, 'warning':{}}
+        self._keys = ['hostname','ip','username', 'password', 'protocol', 'os']
+        self._cli_list_arguments = []
+        self._cli_replacements = {}
 
+        kwargs.update(self._parse_cli())
         arguments = self._init_arguments()
 
         if "required" in arguments:
@@ -43,9 +70,12 @@ class TestbedCreator(BaseTestbedLoader):
                             if arg in kwargs else arguments["optional"][arg])
 
     def _parse_cli(self):
-        """
-        Parses arguments from CLI if any.
-        
+        """ Parses arguments from CLI if any. Removes the first two dashes and
+            converts any left over dashes to underscores.
+
+        Returns:
+            dict: The parsed arguments in dictionary format.
+
         """
         parser = argparse.ArgumentParser()
         parser.add_argument('args', nargs=argparse.REMAINDER)
@@ -55,22 +85,26 @@ class TestbedCreator(BaseTestbedLoader):
         if args.args and len(args.args) > 0:
             args.args = args.args[1:]
             i = 0
+
             while i < len(args.args):
                 arg = args.args[i]
                 i += 1
 
-                # If the recurse option is passed in, convert to argument
-                if arg == '-r':
-                    kwargs.setdefault('recurse', True)
+                # If argument name is in replacement dictionary, 
+                # replace it with correspoding name and value
+                if arg in self._cli_replacements:
+                    name, value = self._cli_replacements[arg]
+                    kwargs.setdefault(name, value)
                     continue
 
                 # If argument expects a list, search and return list
-                if arg == '--add-keys' or arg == '--add-custom-keys':
+                if arg in self._cli_list_arguments:
                     j = i
                     
                     # Collect parameters
                     while j < len(args.args) and not '--' in args.args[j] and \
                         not '-r' in args.args[j]: j += 1
+
                     kwargs.setdefault(arg.replace('--', '').replace('-', '_'), 
                                                                 args.args[i:j])
 
@@ -97,32 +131,48 @@ class TestbedCreator(BaseTestbedLoader):
         return kwargs
 
     def _init_arguments(self):
-        """
-        Defines argument names that should be added to the class instance.
-        Should be overridden in derived classes if they require arguments.
+        """ Defines argument that should be added to the class instance. Should 
+            be overridden in derived classes if they require arguments. This 
+            will ensure correct arguments are passed through either the derived 
+            constructor or the CLI.
 
-        Return type must be a dict of maximum two keys: "required" and 
-        "optional". Required key must pair with an array of
-        argument names which will be added to the class instance with a
-        underscore in front. Optional key must pair with a dictionary of
-        argument names and their default value if not specified.
+            Return type must be a dict of maximum two keys: "required" and 
+            "optional". Required key must pair with an array of argument names 
+            which will be added to the class instance with a underscore in 
+            front. Optional key must pair with a dictionary of argument names 
+            and their default value. The following demonstrates an example:
 
-        For example:
-        {
-            "required": ["file_name"],
-            "optional": {
-                "encode_password": True
-            }
-        }
-        This will add self._file_name property and also self._encode_password 
-        (which has a default value of True).
+                return {
+                    "required": ["file_name"],
+                    "optional": {
+                        "encode_password": True
+                    }
+                }
+        
+            This will add 'self._file_name' and 'self._encode_password' property
+            which the derived class can access.
+
+            Adding to the 'self._cli_list_arguments' will signify the parser 
+            that the argument expects a list. For example, to have '--key' to be
+            parsed as a list in '--key a b c', you will need:
+        
+                self._cli_list_arguments.append('--key')
+
+            Adding to the 'self._cli_replacements' will replace any occurrences 
+            of the key with the corresponding variable name and value. For 
+            example, to map '-s' argument to 'silent=True' variable, 
+            you will need:
+
+                self._cli_replacements.setdefault('-s', ('silent', True))
+
+        Returns:
+            dict: The arguments for the creator.
 
         """
         return {}
 
     def _generate(self):
-        """
-        Defines the generate method that the derived class must implement. 
+        """ Defines the generate method that the derived class must implement. 
         
         Returns:
             dict: The intermediate dictionary format of the testbed data.
@@ -133,8 +183,7 @@ class TestbedCreator(BaseTestbedLoader):
         )
 
     def to_testbed_file(self, output_location):
-        """
-        Retrieves the testbed information and saves it as a YAML file.
+        """ Retrieves the testbed information and saves it as a YAML file.
         
         Args:
             output_location ('str'): Path of where to save the testbed file.
@@ -161,22 +210,17 @@ class TestbedCreator(BaseTestbedLoader):
             self._result['errored']['>'] = 'An error has occurred.'
             return False
 
-    def to_testbed_dictionary(self):
-        config = self._generate()
-
-        if isinstance(config, list):
-            config = config[0]
-        if isinstance(config, tuple):
-            config = config[1]
-
-        return config
-
     def load(self):
+        """ Overrides the base testbed loader class to return a testbed object.
+
+        Returns:
+            Testbed: The testbed object.
+
+        """
         return self.to_testbed_object()
 
     def to_testbed_object(self):
-        """
-        Retrieves the testbed information and returns it as a testbed object.
+        """ Retrieves the testbed information and returns it as a testbed object.
         
         Returns:
             Testbed: The testbed object.
@@ -190,63 +234,30 @@ class TestbedCreator(BaseTestbedLoader):
         return self._create_testbed(data)
 
     def _create_testbed(self, data):
-        testbed = Testbed('testbed')
-        topology = {}
+        """ Helper for creating testbed object from intermediate testbed
+            dictionaries.
 
-        if 'topology' in data:
-            # Build the interface data if it exists
-            for device_name, interfaces in data['topology']:
-                items = topology.setdefault(device_name, [])
-
-                for interface_name, interface_data in interfaces:
-                    interface_object = None
-
-                    # Set IPV4 or IPV6 appropriately while instantiating
-                    # interface objects
-                    if 'ipv4' in interface_data:
-                        interface_object = Interface(interface_name, \
-                            type=interface_data['type'], \
-                                alias=interface_data['alias'], \
-                                    ipv4=interface_data['ipv4'])
-                    elif 'ipv6' in interface_data:
-                        interface_object = Interface(interface_name, \
-                            type=interface_data['type'], \
-                                alias=interface_data['alias'], \
-                                    ipv6=interface_data['ipv6'])
-
-                    # If interface exists and is valid, add it to interface list
-                    # for the device so it will be added to device later
-                    if interface_object is not None:
-                        items.append(interface_object)
-
-        for device_name, device_info in data['devices'].items():
-            device = Device(device_name, connections=device_info['connections'])
-
-            # Instantiate device object and attach properties
-            device.alias = device_name
-            device.type = device_info['type']
-
-            if device_name in topology:
-                # If device has interfaces, add all of them to the device
-                for interface in topology[device_name]:
-                    device.add_interface(interface)
-
-            for credential_name, credential_info \
-                in device_info['credentials'].items():
-                # Add any connection credentials to the device
-                device.credentials[credential_name] = credential_info
-
-            testbed.add_device(device)
-
-        return testbed
-
-    def _encode_all_password(self, devices):
-        """ encode the password of all the devices
         Args:
-            devices(`list`): list of devices
+            data ('dict'): The testbed data.
 
         Returns:
-            None
+            Testbed: The converted testbed object.
+        
+        """
+        return BaseTestbedLoader.create_testbed({
+            'testbed': {
+                'name': 'testbed'
+            },
+            'devices': data.get('devices', {}),
+            'topology': data.get('topology', {})
+        })
+
+    def _encode_all_password(self, devices):
+        """ Encode the password of all the devices.
+        
+        Args:
+            devices ('dict'): The intermediate testbed dictionary.
+
         """
         # ask password on connect if not provided, otherwise encode the password
         stack = [devices]
@@ -260,18 +271,27 @@ class TestbedCreator(BaseTestbedLoader):
                     stack.append(value)
 
     def _encode_secret(self, plain_text):
+        """ Performs password encoding.
+
+        Args:
+            plain_text ('str'): the plain text password.
+
+        Returns:
+            str: The encoded password.
+
+        """
         encoded = SecretString.from_plaintext(plain_text)
         return '%ENC{' + encoded.data + '}'
 
     def _write_yaml(self, output, devices, encode_password, input_file=None):
-        """Write device data to yaml file
+        """ Write device data to yaml file.
+        
         Args:
-            output (`str`): output file path
-            devices (`list`): list of dicts containing device dat
-            encode_password (`bool`): flag for encoding password
-            input_file (`str`): input file name
-        Returns:
-            None
+            output ('str'): The output file path.
+            devices ('list'): Dictionary containing device data.
+            encode_password ('bool'): Flag for encoding passwords or not.
+            input_file ('str'): The input file name, if any.
+        
         """
         # if empty dict, do nothing
         if not devices:
@@ -302,14 +322,15 @@ class TestbedCreator(BaseTestbedLoader):
             self._result['success'][output] = ''
 
     def _construct_yaml(self, devices):
-        """ construct list of dicts containing device data into nest yaml 
-        structure
+        """ Construct list of dicts containing device data into nested yaml 
+            structure.
 
         Args:
-            devices(`list`): list of dict containing device attributes
+            devices ('list'): List of dict containing device attributes.
 
         Returns:
-             nested dict that's ready to be dumped into yaml
+             dict: Testbed dictionary that's ready to be dumped into yaml.
+    
         """
         yaml_dict = {
             'devices': {}
@@ -377,6 +398,9 @@ class TestbedCreator(BaseTestbedLoader):
         return yaml_dict
 
     def print_result(self):
+        """ Prints the result of testbed creating process.
+
+        """
         # print testbeds create successfully
         if not self._result['success'] and not self._result['errored'] \
             and not self._result['warning']:

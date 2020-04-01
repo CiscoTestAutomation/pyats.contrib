@@ -14,21 +14,22 @@ class Interactive(TestbedCreator):
     as an output.
 
     Args:
-        add_keys (list) default=None: Any additional keys that should be added
+        add_keys ('list') default=None: Any additional keys that should be added
             to the testbed.
-        encode_password (bool) default=False: Should generated testbed encode 
+        encode_password ('bool') default=False: Should generated testbed encode 
             its passwords.
 
-    CLI Argument         |  Class Argument
-    -----------------------------------------------
-    --add-keys k1 k2 ... |  add_keys=[k1, k2,...]
-    --encode-password    |  encode_password=True
+    CLI Argument                |  Class Argument
+    -----------------------------------------------------------------
+    --add-keys k1 k2 ...        |  add_keys=['k1', 'k2', ...]
+    --add-custom-keys k1 k2 ... |  add_custom_keys=['k1', 'k2', ...]
+    --encode-password           |  encode_password=True
 
     pyATS Examples:
         pyats create testbed interactive --output=testbed.yaml
 
     Examples:
-        # Create testbed file from CLI with additional keys
+        # Create testbed from CLI with additional keys
         creator = Interactive(encode_password=True, add_keys=['time', 'date'])
         creator.to_testbed_file("testbed.yaml")
         creator.to_testbed_object()
@@ -38,16 +39,20 @@ class Interactive(TestbedCreator):
     _VALID_ANSWER = {'yes': True, 'y': True, 'no': False, 'n': False}
 
     def _init_arguments(self):
-        """ Specifies the required arguments for the creator.
+        """ Specifies the arguments for the creator.
 
         Returns:
-            Dict: Arguments for the creator.
+            dict: Arguments for the creator.
 
         """
+        self._cli_list_arguments.append('--add-keys')
+        self._cli_list_arguments.append('--add-custom-keys')
+
         return {
             'optional': {
                 'encode_password': False,
-                'add_keys': None
+                'add_keys': None,
+                'add_custom_keys': None
             }
         }
 
@@ -77,6 +82,7 @@ class Interactive(TestbedCreator):
 
         Returns:
             str: The user's input.
+
         """
         response = ''
 
@@ -211,6 +217,12 @@ class Interactive(TestbedCreator):
                     .format(k=key, d=description), iterable={''}, invalid=True)
 
             # ask input for custom keys if supplied
+            if self._add_custom_keys:
+                if not self._add_keys:
+                    self._add_keys = []
+                self._add_keys.extend("custom:{}".format(key.lower())
+                                            for key in self._add_custom_keys)
+
             if self._add_keys:
                 for k in self._add_keys:
                     if k not in device:

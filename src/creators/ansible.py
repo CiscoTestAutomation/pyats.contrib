@@ -5,7 +5,39 @@ from ansible import context
 from .creator import TestbedCreator
 
 class Ansible(TestbedCreator):
-    def _init_arguments(self): 
+    """ Ansible class (TestbedCreator)
+
+    Creator for the 'ansible' source. Reads the given inventory in Ansible and 
+    converts the data to a structured testbed file or object.
+
+    Args:
+        inventory_name ('str'): The name of the Ansible inventory.
+        encode_password ('bool') default=False: Should generated testbed encode 
+            its passwords.
+
+    CLI Argument           |  Class Argument
+    ------------------------------------------------
+    --inventory-name=value |  inventory_name=value
+    --encode-password      |  encode_password=True
+
+    pyATS Examples:
+        pyats create testbed ansible --output=out --inventory-name=inventory.ini
+
+    Examples:
+        # Create testbed from Ansible source
+        creator = Ansible(inventory_name="inventory.ini")
+        creator.to_testbed_file("template.csv")
+        creator.to_testbed_object()
+
+    """
+    
+    def _init_arguments(self):
+        """ Specifies the arguments for the creator.
+
+        Returns:
+            dict: Arguments for the creator.
+
+        """
         return {
             'required': ['inventory_name'],
             'optional': {
@@ -14,8 +46,7 @@ class Ansible(TestbedCreator):
         }
 
     def _generate(self):
-        """ 
-        Transforms Ansible data into testbed format.
+        """ Transforms Ansible data into testbed format.
         
         Returns:
             dict: The intermediate dictionary format of the testbed data.
@@ -27,8 +58,8 @@ class Ansible(TestbedCreator):
         context.CLIARGS['basedir'] = '.'
 
         # Instantiate Ansible control objects
-        inventory = InventoryManager(loader=DataLoader(), \
-            sources=self._inventory_name)
+        inventory = InventoryManager(loader=DataLoader(), 
+                                                sources=self._inventory_name)
         test = InventoryCLI(args=[''])
         group = inventory.groups.get('all')
         test.inventory = inventory
@@ -67,8 +98,8 @@ class Ansible(TestbedCreator):
                     'default': {}
                 })['default']
 
-                cli.setdefault('ip', host_vars[host]['ansible_host'] \
-                    .encode('ascii'))
+                cli.setdefault('ip', host_vars[host]['ansible_host']
+                                                            .encode('ascii'))
                 password = None
 
                 # Select the correct field name based on what is given
@@ -82,26 +113,26 @@ class Ansible(TestbedCreator):
                     continue
                 
                 # Set password and username
-                default.setdefault('password', \
-                    category['vars'][password].encode('ascii'))
-                default.setdefault('username', \
-                    category['vars']['ansible_user'].encode('ascii'))
+                default.setdefault('password',
+                                    category['vars'][password].encode('ascii'))
+                default.setdefault('username',
+                            category['vars']['ansible_user'].encode('ascii'))
 
                 # If device has any other connection types, we also
                 # set those respectively with their password
                 if 'ansible_become_method' in category['vars'] and \
                     'ansible_become_pass' in category['vars']:
-                    inner = connections.setdefault( \
-                        category['vars']['ansible_become_method'] \
-                            .encode('ascii'), {})
-                    inner.setdefault('password', \
+                    inner = connections.setdefault(
+                        category['vars']['ansible_become_method']
+                                                        .encode('ascii'), {})
+                    inner.setdefault('password',
                         category['vars']['ansible_become_pass'].encode('ascii'))
 
                 # Set other device properties
                 device.setdefault('alias', host.encode('ascii'))
-                device.setdefault('os', \
+                device.setdefault('os',
                     category['vars']['ansible_network_os'].encode('ascii'))
-                device.setdefault('platform', \
+                device.setdefault('platform',
                     category['vars']['ansible_network_os'].encode('ascii'))
                 device.setdefault('type', device_type.encode('ascii'))
 

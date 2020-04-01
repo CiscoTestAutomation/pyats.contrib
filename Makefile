@@ -1,4 +1,3 @@
-
 # Variables
 BUILD_DIR     = $(shell pwd)/__build__
 DIST_DIR      = $(BUILD_DIR)/dist
@@ -34,7 +33,7 @@ clean:
 	@echo "--------------------------------------------------------------------"
 	@echo "Removing make directory: $(BUILD_DIR)"
 	@rm -rf $(BUILD_DIR)
-	@python setup.py clean
+	@$(PYTHON) setup.py clean
 	@echo "Removing *.pyc *.c and __pycache__/ files"
 	@find . -type f -name "*.pyc" | xargs rm -vrf
 	@find . -type f -name "*.c" | xargs rm -vrf
@@ -48,7 +47,7 @@ develop:
 	@echo "--------------------------------------------------------------------"
 	@echo "Setting up development environment"
 	@pip install $(DEPENDENCIES)
-	@python setup.py develop --no-deps -q
+	@$(PYTHON) setup.py develop --no-deps -q
 	@echo ""
 	@echo "Done."
 	@echo ""
@@ -57,7 +56,7 @@ undevelop:
 	@echo ""
 	@echo "--------------------------------------------------------------------"
 	@echo "Removing development environment"
-	@python setup.py develop -q --no-deps --uninstall
+	@$(PYTHON) setup.py develop -q --no-deps --uninstall
 	@echo ""
 	@echo "Done."
 	@echo ""
@@ -78,7 +77,7 @@ check:
 	@echo "Checking setup.py consistency..."
 	@echo ""
 
-	@python setup.py check
+	@$(PYTHON) setup.py check
 
 	@echo "Done"
 	@echo ""

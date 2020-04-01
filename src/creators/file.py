@@ -1,7 +1,7 @@
 import os
-import pathlib
 import xlrd
 import csv
+import pathlib
 
 from pyats.topology import loader
 from .creator import TestbedCreator
@@ -14,10 +14,10 @@ class File(TestbedCreator):
     as path and converts all the CSV and Excel files inside.
 
     Args:
-        path (str): The path of the input CSV/Excel file or a folder.
-        recurse (bool) default=False: If a folder is passed in, whether or not 
+        path ('str'): The path of the input CSV/Excel file or a folder.
+        recurse ('bool') default=False: If a folder is passed in, whether or not 
             traversal should include subdirectories.
-        encode_password (bool) default=False: Should generated testbed encode 
+        encode_password ('bool') default=False: Should generated testbed encode 
             its passwords.
 
     CLI Argument        |  Class Argument
@@ -31,7 +31,7 @@ class File(TestbedCreator):
         pyats create testbed file --path=folder --output=testbeds -r
 
     Examples:
-        # Create testbed file from test.csv with encoded password
+        # Create testbed from test.csv with encoded password
         creator = File(path="test.csv", encode_password=True)
         creator.to_testbed_file("testbed.yaml")
         creator.to_testbed_object()
@@ -39,12 +39,14 @@ class File(TestbedCreator):
     """
 
     def _init_arguments(self):
-        """ Specifies the required arguments for the creator.
+        """ Specifies the arguments for the creator.
 
         Returns:
-            Dict: Arguments for the creator.
+            dict: Arguments for the creator.
 
         """
+        self._cli_replacements.setdefault('-r', ('recurse', True))
+        
         return {
             'required': ['path'],
             'optional': {
@@ -66,7 +68,7 @@ class File(TestbedCreator):
         testbed = self._generate()
 
         if isinstance(testbed, list):
-            for base, item in self._generate():
+            for base, item in testbed:
                 self._write_yaml(os.path.join(output_location, base), 
                             item, self._encode_password, input_file=self._path)
         else:
@@ -99,39 +101,29 @@ class File(TestbedCreator):
         if not os.path.exists(self._path):
             raise FileNotFoundError('File or directory does not exist: %s' 
                                                                 % self._path)
-            # if is a dir then walk through it
-
+        
+        # if is a dir then walk through it
         if os.path.isdir(self._path):
             result = []
 
             for root, _, files in os.walk(self._path):
-
-                # get sub dir name relative to input dir
-                p = pathlib.Path(root)
-
-                # remove the ./ in front
-                out_sub_dir = str(p.relative_to(self._path)).lstrip('./')
                 for file in files:
-                    # remove the ./ in front
-                    input_file = os.path.join(root, file).lstrip('./')
-
+                    input_file = os.path.join(root, file)
+                    relative = os.path.relpath(input_file, self._path)
                     devices = self._read_device_data(input_file)
 
-                    # write to a yaml file where the filename 
-                    # is the same as the excel file
-                    output = os.path.join(out_sub_dir,
-                                            os.path.splitext(file)[0] + '.yaml')
-                
-                    result.append((output, self._construct_yaml(devices)))
+                    # The testbed filename should be same as the file
+                    output = os.path.splitext(relative)[0] + '.yaml'
 
+                    result.append((output, self._construct_yaml(devices)))
+            
                 # if recursive option is not set, then stop after first level
                 if not self._recurse:
                     break
-        # not a dir, just a file
         else:
             devices = self._read_device_data(self._path)
             return self._construct_yaml(devices)
-
+        
         return result
 
     def _read_device_data(self, file):
@@ -145,18 +137,17 @@ class File(TestbedCreator):
 
         """
         _, extension = os.path.splitext(file)
-        # check if file is csv or xls
+        
+        # Check if file is csv or xls
         devices = {}
-        try:
-            if extension == '.csv':
-                devices = self._read_csv(file)
-            elif extension in {'.xls', '.xlsx'}:
-                devices = self._read_excel(file)
-            else:
-                self._result['warning'][file] = 'is not excel or csv'
-        except Exception as e:
-            self._result['errored'][file] = 'has an error: {e}'.format(e=str(e))
-            return
+
+        if extension == '.csv':
+            devices = self._read_csv(file)
+        elif extension in {'.xls', '.xlsx'}:
+            devices = self._read_excel(file)
+        else:
+            raise Exception("Given path is not a folder or a CSV/Excel file.")
+
         return devices
 
     def _read_csv(self, file_name):
