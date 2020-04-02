@@ -22,7 +22,7 @@ def discover_creators():
                 'creator.py'
             ]
         ]
-    return ['{source} = src.creators.{source}:{source_title}'
+    return ['{source} = creators.{source}:{source_title}'
         .format(source=source, source_title=source.title()) for source in files]
 
 # launch setup

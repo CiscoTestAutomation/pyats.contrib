@@ -89,17 +89,15 @@ class Ansible(TestbedCreator):
                         cli_name = 'netconf'
 
                 # Construct connection fields and credentials
-                device = devices.setdefault(host.encode('ascii'), {})
+                device = devices.setdefault(host, {})
                 connections = device.setdefault('connections', {
-                     cli_name: { 'protocol': 'ssh' }
+                     cli_name: {'protocol': 'ssh'}
                 })
                 cli = connections[cli_name]
-                default = device.setdefault('credentials', {
-                    'default': {}
-                })['default']
+                default = device.setdefault('credentials', {'default': {}})
+                default = default['default']
 
-                cli.setdefault('ip', host_vars[host]['ansible_host']
-                                                            .encode('ascii'))
+                cli.setdefault('ip', host_vars[host]['ansible_host'])
                 password = None
 
                 # Select the correct field name based on what is given
@@ -109,31 +107,27 @@ class Ansible(TestbedCreator):
                     password = 'ansible_password'
                 else:
                     # If password does not exist, skip over device
-                    del devices[host.encode('ascii')]
+                    del devices[host]
                     continue
                 
                 # Set password and username
-                default.setdefault('password',
-                                    category['vars'][password].encode('ascii'))
-                default.setdefault('username',
-                            category['vars']['ansible_user'].encode('ascii'))
+                default.setdefault('password', category['vars'][password])
+                default.setdefault('username', category['vars']['ansible_user'])
 
                 # If device has any other connection types, we also
                 # set those respectively with their password
                 if 'ansible_become_method' in category['vars'] and \
                     'ansible_become_pass' in category['vars']:
                     inner = connections.setdefault(
-                        category['vars']['ansible_become_method']
-                                                        .encode('ascii'), {})
+                        category['vars']['ansible_become_method'], {})
                     inner.setdefault('password',
-                        category['vars']['ansible_become_pass'].encode('ascii'))
+                        category['vars']['ansible_become_pass'])
 
                 # Set other device properties
-                device.setdefault('alias', host.encode('ascii'))
-                device.setdefault('os',
-                    category['vars']['ansible_network_os'].encode('ascii'))
+                device.setdefault('alias', host)
+                device.setdefault('os', category['vars']['ansible_network_os'])
                 device.setdefault('platform',
-                    category['vars']['ansible_network_os'].encode('ascii'))
-                device.setdefault('type', device_type.encode('ascii'))
+                                        category['vars']['ansible_network_os'])
+                device.setdefault('type', device_type)
 
         return testbed if len(testbed['devices']) > 0 else None

@@ -52,8 +52,8 @@ class TestbedCreator(BaseTestbedLoader):
         self._cli_list_arguments = []
         self._cli_replacements = {}
 
-        kwargs.update(self._parse_cli())
         arguments = self._init_arguments()
+        kwargs.update(self._parse_cli())
 
         if "required" in arguments:
             for arg in arguments["required"]:
@@ -195,14 +195,13 @@ class TestbedCreator(BaseTestbedLoader):
         if os.path.isdir(output_location):
             raise Exception('Output "{o}" is a directory'
                                                     .format(o=output_location))
+        testbed = self._generate()
+        encode_password = False
+        
+        if hasattr(self, '_encode_password'):
+            encode_password = self._encode_password
 
         try:
-            testbed = self._generate()
-            encode_password = False
-            
-            if hasattr(self, '_encode_password'):
-                encode_password = self._encode_password
-
             self._write_yaml(output_location, testbed, encode_password)
             
             return True
