@@ -146,11 +146,15 @@ class TestCreator(TestCase):
     def test_inheritance(self):
         self.assertTrue(issubclass(TestbedCreator, BaseTestbedLoader))
 
-    def test_to_testbed_file(self):
+    def test_to_testbed_file_none(self):
+        output = '/tmp/test'
         class Test(TestbedCreator):
             def _generate(self):
                 return None
-        Test().to_testbed_file('/tmp/test')
+        if os.path.isfile(output):
+            os.remove(output)
+        Test().to_testbed_file(output)
+        self.assertFalse(os.path.isfile(output))
 
     def test_to_testbed_object(self):
         class Test(TestbedCreator):
@@ -170,3 +174,4 @@ class TestCreator(TestCase):
 
 if __name__ == '__main__':
     main()
+        
