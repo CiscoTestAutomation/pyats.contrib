@@ -7,7 +7,44 @@ from .creator import TestbedCreator
 logger = logging.getLogger(__name__)
 
 class Netbox(TestbedCreator):
+    """ Netbox class (TestbedCreator)
+
+    Creator for the 'netbox' source. Retrieves device data from a hosted Netbox
+    instance via REST API and converts them to either a testbed file or testbed
+    object. Will prompt user for device credentials.
+
+    Args:
+        netbox_url ('str'): The URL to the Netbox instance.
+        user_token ('str'): The REST API access token. Can be found under your 
+            profile and in the API Tokens tab.
+        encode_password (bool) default=False: Should generated testbed encode 
+            its passwords.
+
+    CLI Argument        |  Class Argument
+    ---------------------------------------------
+    --netbox-url=value  |  netbox_url=value
+    --user-token=value  |  user_token=value
+    --encode-password   |  encode_password=True
+
+    pyATS Examples:
+        pyats create testbed netbox --output=out --netbox-url=https://netbox.com
+        --user-token=72830d67beff4ae178b94d8f781842408df8069d
+
+    Examples:
+        # Create testbed from Netbox source
+        creator = Netbox(user_token="72830d67", netbox_url="https://netbox.com")
+        creator.to_testbed_file("testbed.yaml")
+        creator.to_testbed_object()
+
+    """
+
     def _init_arguments(self):
+        """ Specifies the arguments for the creator.
+
+        Returns:
+            dict: Arguments for the creator.
+
+        """
         return {
             'required': ['netbox_url', 'user_token'],
             'optional': {
@@ -16,18 +53,17 @@ class Netbox(TestbedCreator):
         }
 
     def _parse_response(self, response, return_property):
-        """ 
-        Helper to parse JSON response from HTTP requests.
+        """ Helper to parse JSON response from HTTP requests.
 
         Args:
-            response ('response'): The response object obtained 
-                after HTTP request.
-            return_property ('str'): Any filtering that will be 
-                applied after parsing the response.
+            response ('response'): The response object obtained after 
+                HTTP request.
+            return_property ('str'): Any filtering that will be applied after 
+                parsing the response.
 
         Returns:
-            dict: The response JSON in dictionary form or none if
-                response is invalid
+            dict: The response JSON in dictionary form or none if response 
+                is invalid.
 
         """
         response = None if not response else response.json()
@@ -38,9 +74,8 @@ class Netbox(TestbedCreator):
         return response
 
     def _get_request(self, url, headers=None, return_property=None):
-        """ 
-        Helper to send GET request and returns the response JSON 
-        in dictionary form.
+        """ Helper to send GET request and returns the response JSON in 
+            dictionary form.
 
         Args:
             url ('str'): URL of where to send the GET request to.
@@ -65,8 +100,7 @@ class Netbox(TestbedCreator):
             return None
 
     def _format_url(self, base, route):
-        """ 
-        Helper to join the base URL and its route.
+        """ Helper to join the base URL and its route.
 
         Args:
             base ('str'): The base of the URL.
@@ -79,9 +113,8 @@ class Netbox(TestbedCreator):
         return "{}{}{}".format(base, "" if base[-1] == "/" else "/", route)
 
     def _set_value_if_exists(self, container, key, entry):
-        """ 
-        Helper to set value in dictionary if given entry
-        is not none.
+        """ Helper to set value in dictionary if given entry
+            is not none.
 
         Args:
             container ('dict'): Where to insert the new key value pair. 
@@ -100,8 +133,7 @@ class Netbox(TestbedCreator):
         return False
 
     def _parse_os(self, os):
-        """ 
-        Helper to parse the OS type.
+        """ Helper to parse the OS type.
 
         Args:
             os ('str'): The input os type.
@@ -121,8 +153,7 @@ class Netbox(TestbedCreator):
         return None
 
     def _format_type(self, interface_type): 
-        """ 
-        Helper to parse the interface type.
+        """ Helper to parse the interface type.
 
         Args:
             interface_type ('str'): The input interface type.
@@ -141,8 +172,7 @@ class Netbox(TestbedCreator):
         return None
 
     def _get_info(self, data, keys, transformation=None):
-        """ 
-        Helper for getting data from nested dictionary. 
+        """ Helper for getting data from nested dictionary. 
 
         Args:
             data ('dict'): The dictionary where you want to 
@@ -171,8 +201,7 @@ class Netbox(TestbedCreator):
         return current
 
     def _generate(self):
-        """ 
-        Transforms NetBox data into testbed format.
+        """ Transforms NetBox data into testbed format.
         
         Returns:
             dict: The intermediate dictionary format of the testbed data.
@@ -183,8 +212,8 @@ class Netbox(TestbedCreator):
         headers = { "Authorization": token }
         data = {}
         topology = {}
-        devices_url = self._format_url(self._netbox_url, \
-            "api/dcim/devices/?format=json")
+        devices_url = self._format_url(self._netbox_url, 
+                                                "api/dcim/devices/?format=json")
         response = self._get_request(devices_url, headers, "results")
 
         # If no response is received for retrieving a list of devices, stop
@@ -201,18 +230,18 @@ class Netbox(TestbedCreator):
             device_data = data.setdefault(device_name, {})
 
             # Construct device platform data
-            device_platform = self._parse_os(self._get_info(device, \
-                ["platform", "slug"], lambda slug: slug.lower()))
+            device_platform = self._parse_os(self._get_info(device, 
+                            ["platform", "slug"], lambda slug: slug.lower()))
 
             # OS value is required and must exist
-            is_valid &= self._set_value_if_exists(device_data, "os", \
-                device_platform)
+            is_valid &= self._set_value_if_exists(device_data, "os",
+                                                             device_platform)
 
             # Set other testbed values if they exists
             self._set_value_if_exists(device_data, "alias", device_name)
             self._set_value_if_exists(device_data, "platform", device_platform)
-            self._set_value_if_exists(device_data, "type", \
-                self._get_info(device, ["device_type", "model"]))
+            self._set_value_if_exists(device_data, "type", 
+                            self._get_info(device, ["device_type", "model"]))
             
             # Initialize connection data
             connections = device_data.setdefault("connections", {})
@@ -225,18 +254,18 @@ class Netbox(TestbedCreator):
 
             # Attempt to set connection protocol to primary IP, if found
             cli.setdefault("protocol", "ssh")
-            found_ip |= self._set_value_if_exists(cli, "ip", \
-                self._get_info(device, [
-                    "primary_ip4", "address"
-                ], mask_filter))
-            found_ip |= self._set_value_if_exists(cli, "ip", \
+            found_ip |= self._set_value_if_exists(cli, "ip", self._get_info(
+                            device, ["primary_ip4", "address"], mask_filter))
+            found_ip |= self._set_value_if_exists(cli, "ip",
                 self._get_info(device, ["primary_ip", "address"], mask_filter))
             found_ip |= self._set_value_if_exists(cli, "ip", ipv6)
 
             # If we did not find a valid OS type for device, we skip it
             if not is_valid:
-                logger.warning(f"OS type is not valid for {device_name}. " + \
-                    "Skipping device...")
+                logger.warning(
+                    "OS type is not valid for {}. ".format(device_name) +
+                    "Skipping..."
+                )
                 
                 # Delete the device from testbed
                 del data[device_name]
@@ -249,16 +278,18 @@ class Netbox(TestbedCreator):
                 })
             
             # Send request for interfaces
-            interface_url = self._format_url(self._netbox_url, \
-                "api/dcim/interfaces/?device_id={}&format=json" \
-                    .format(device_id))
-            interface_response = self._get_request(interface_url, \
-                headers, "results")
+            interface_url = self._format_url(self._netbox_url, 
+                "api/dcim/interfaces/?device_id={}&format=json".format(
+                                                                    device_id))
+            interface_response = self._get_request(interface_url, headers, 
+                                                                    "results")
 
             # If no interface response are received, we skip the device
             if not interface_response:
-                logger.warning(f"No interface found for {device_name}. " + \
-                    "Skipping device...")
+                logger.warning(
+                    "No interface found for {}. ".format(device_name) +
+                    "Skipping device..."
+                )
 
                 # Delete device data from testbed
                 del data[device_name]
@@ -274,15 +305,15 @@ class Netbox(TestbedCreator):
                 interface_id = interface["id"]
                 current = interfaces.setdefault(interface_name, {})
 
-                current.setdefault("alias", "{}_{}" \
-                    .format(device_name, interface_name))
-                self._set_value_if_exists(current, "type", \
-                    self._format_type(interface_name.lower()))
+                current.setdefault("alias", "{}_{}"
+                                        .format(device_name, interface_name))
+                self._set_value_if_exists(current, "type", 
+                                    self._format_type(interface_name.lower()))
 
                 # Attempt to retrieve IP for each interface
-                ip_url = self._format_url(self._netbox_url, \
-                    "api/ipam/ip-addresses/?interface_id={}&format=json" \
-                        .format(interface_id))
+                ip_url = self._format_url(self._netbox_url,
+                    "api/ipam/ip-addresses/?interface_id={}&format=json"
+                                                        .format(interface_id))
                 ip_response = self._get_request(ip_url, headers, "results")
 
                 # If no response for IP retrieval then we skip this interface
@@ -303,14 +334,16 @@ class Netbox(TestbedCreator):
 
             # If no primary IP found for this device, then we stop and skip
             if not found_ip:
-                logger.warning(f"Connection IP not found for {device_name}. " +
-                    "Skipping device...")
+                logger.warning(
+                    "Connection IP not found for {}. ".format(device_name) +
+                    "Skipping device..."
+                )
                 
                 del data[device_name]
                 continue
             
             # Request user to manually enter their credentials for each device
-            logger.info(f"Connection Credentials for {device_name}:")
+            logger.info("Connection Credentials for {}:".format(device_name))
 
             username = input("Username: ")
             password = input("Password: ")
