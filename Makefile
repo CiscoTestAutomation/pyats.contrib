@@ -5,7 +5,7 @@ PYTHON		  = python
 
 DEPENDENCIES = ansible requests xlrd xlrd xlwt xlsxwriter
 
-.PHONY: check help clean package develop undevelop all \
+.PHONY: check help clean test package develop undevelop all \
         install_build_deps uninstall_build_deps
 
 help:
@@ -15,6 +15,7 @@ help:
 	@echo ""
 	@echo " check                 check setup.py content"
 	@echo " clean                 remove the build directory ($(BUILD_DIR))"
+	@echo " test                  run all unit tests"
 	@echo " help                  display this help"
 	@echo " develop               set all package to development mode"
 	@echo " undevelop             unset the above development mode"
@@ -78,6 +79,17 @@ check:
 	@echo ""
 
 	@$(PYTHON) setup.py check
+
+	@echo "Done"
+	@echo ""
+
+test:
+	@echo ""
+	@echo "--------------------------------------------------------------------"
+	@echo "Running unit tests..."
+	@echo ""
+
+	@$(PYTHON) -m unittest discover src
 
 	@echo "Done"
 	@echo ""
