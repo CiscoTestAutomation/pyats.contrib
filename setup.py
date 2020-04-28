@@ -16,7 +16,7 @@ def read(path):
 
 def discover_creators():
     files = [
-        file.replace('.py', '') for file in listdir('src/creators') 
+        file.replace('.py', '') for file in listdir('src/creators')
             if isfile(join('src/creators', file)) and file not in [
                 '__init__.py',
                 'creator.py'
@@ -28,7 +28,7 @@ def discover_creators():
 # launch setup
 setup(
     name = 'pyats.contrib',
-    version = '20.3',
+    version = '20.4',
 
     # descriptions
     description = 'Open source package for pyATS framework extensions.',
@@ -66,7 +66,7 @@ setup(
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    
+
     # project packages
     packages = find_packages(where = 'src'),
 
