@@ -33,6 +33,7 @@ setup(
     # descriptions
     description = 'Open source package for pyATS framework extensions.',
     long_description = read('README.md'),
+    long_description_content_type="text/markdown",
 
     # the project's main homepage.
     url = 'https://developer.cisco.com/pyats/',
