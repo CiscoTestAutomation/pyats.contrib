@@ -77,6 +77,14 @@ class TestCreator(TestCase):
         test = Test()
         self.assertTrue(test._my_arg)
         self.assertTrue(test._password)
+        sys.argv = ["creator", "--my-arg", "123", "--password", "abc"]
+        test = Test()
+        self.assertEqual(test._my_arg, '123')
+        self.assertEqual(test._password, 'abc')
+        sys.argv = ["creator", "--my-arg=a", "--password", "b"]
+        test = Test()
+        self.assertEqual(test._my_arg, 'a')
+        self.assertTrue(test._password, 'b')
         sys.argv = ["creator", "--my-arg=a", "--password=b",
                                                         "--b=hi", "--time=55"]
         test = Test()
@@ -114,6 +122,11 @@ class TestCreator(TestCase):
         self.assertEqual(test._a, '1')
         self.assertEqual(test._b, '1')
         sys.argv = ["creator", "--a=1", "--b=1", "--items", "aa", "bc", "cc"]
+        test = Test()
+        self.assertEqual(test._items, ['aa', 'bc', 'cc'])
+        self.assertEqual(test._a, '1')
+        self.assertEqual(test._b, '1')
+        sys.argv = ["creator", "--a", "1", "--b", "1", "--items", "aa", "bc", "cc"]
         test = Test()
         self.assertEqual(test._items, ['aa', 'bc', 'cc'])
         self.assertEqual(test._a, '1')
@@ -173,5 +186,4 @@ class TestCreator(TestCase):
         self.assertTrue(isinstance(Test().to_testbed_object(), Testbed))
 
 if __name__ == '__main__':
-    main()
-        
+    main()        
