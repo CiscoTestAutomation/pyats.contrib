@@ -29,7 +29,7 @@ def discover_creators():
 # launch setup
 setup(
     name = 'pyats.contrib',
-    version = '20.4',
+    version = '20.4.1',
 
     # descriptions
     description = 'Open source package for pyATS framework extensions.',
