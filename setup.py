@@ -15,15 +15,16 @@ def read(path):
         return f.read()
 
 def discover_creators():
-    files = [
-        file.replace('.py', '') for file in listdir('src/creators')
-            if isfile(join('src/creators', file)) and file not in [
-                '__init__.py',
-                'creator.py'
-            ]
-        ]
-    return ['{source} = creators.{source}:{source_title}'
-        .format(source=source, source_title=source.title()) for source in files]
+    creators = filter(lambda creator: creator not in [
+        '__init__.py',
+        'creator.py',
+        'README.md',
+        'tests'
+    ], listdir('src/pyats/contrib/creators'))
+    creators = [creator.replace('.py', '') for creator in creators]
+    return ['{source} = pyats.contrib.creators.{source}:{source_title}'
+        .format(source=source, source_title=source.title()) \
+            for source in creators]
 
 # launch setup
 setup(
@@ -67,6 +68,9 @@ setup(
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
+
+    # uses namespace package
+    namespace_packages = ['pyats'],
 
     # project packages
     packages = find_packages(where = 'src'),

@@ -122,7 +122,7 @@ class TestFile(TestCase):
         with open('{}/1.yaml'.format(outsubdir)) as file: 
             self.assertEqual(file.read(), self.expected)
 
-    def test_excel(self):
+    def test_excel_load(self):
         wb = xlwt.Workbook()
         ws = wb.add_sheet('testbed')
         for i, k in enumerate([
