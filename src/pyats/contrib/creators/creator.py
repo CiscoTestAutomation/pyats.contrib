@@ -410,16 +410,21 @@ class TestbedCreator(BaseTestbedLoader):
         """ Prints the result of testbed creating process.
 
         """
-        # print testbeds create successfully
+        # print testbeds create unsuccessfully
         if not self._result['success'] and not self._result['errored'] \
             and not self._result['warning']:
             logger.warning('No file found.')
             return
 
         if self._result['success']:
-            logger.info('Testbed file generated: ')
-            for k, v in self._result['success'].items():
-                logger.info('{k} {v}'.format(k=k,v=v))
+            if 'template' in self._result['success']:
+                # print template create successfully
+                logger.info('Template file generated: {file}'.format(file=self._result['success']['template']))
+            else:
+                # print testbeds create successfully
+                logger.info('Testbed file generated: ')
+                for k, v in self._result['success'].items():
+                    logger.info('{k} {v}'.format(k=k,v=v))
 
         # print the ones that are errored
         if self._result['errored']:

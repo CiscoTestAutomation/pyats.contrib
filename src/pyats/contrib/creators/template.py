@@ -100,6 +100,10 @@ class Template(TestbedCreator):
         else:
             raise Exception('File type is not csv or excel')
 
+        # return success result with template filename
+        if os.path.isfile(self._output):
+            self._result['success'].setdefault('template', self._output)
+
     def _write_csv(self, output):
         """ Helper for writing keys to CSV.
         
