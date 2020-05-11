@@ -183,7 +183,7 @@ class Netbox(TestbedCreator):
             cannot be found in list of valid types.
     
         """
-        valid_types = ["ethernet", "loopback"]
+        valid_types = ["ethernet", "loopback", "vlan"]
 
         for valid in valid_types:
             if interface_type and valid in interface_type:
@@ -253,7 +253,7 @@ class Netbox(TestbedCreator):
                 device_name = device["display_name"].upper()
             else:
                 device_name = device["display_name"]
-                
+
             logger.info("Retrieving associated data for {}..."
                                                         .format(device_name))
             device_id = device["id"]
@@ -346,6 +346,10 @@ class Netbox(TestbedCreator):
                                             .format(device_name, interface_name))
                     self._set_value_if_exists(current, "type", 
                                         self._format_type(interface_name.lower()))
+                    if current.get('type') is None:
+                        logger.info(f"{device_name} interface {interface_name.lower()} is not valid, skipping")
+                        del interfaces[interface_name]
+                        continue
 
                     # Attempt to retrieve IP for each interface
                     ip_url = self._format_url(self._netbox_url,
