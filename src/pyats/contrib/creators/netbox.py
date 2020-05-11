@@ -21,9 +21,10 @@ class Netbox(TestbedCreator):
             its passwords.
         topology (bool) default=False: Do not generate topology data by default, #TODO fix links
         verify (bool) default=True: Should requests library validate SSL cert for netbox
-        url_filter ('str') default='': Netbox URL filter string, example: 'status=active&site=test_site'
+        url_filter ('str') default=None: Netbox URL filter string, example: 'status=active&site=test_site'
         def_user ('str') default=None: Set the username for all devices
         def_pass ('str') default=None: Set the password for all devices
+        host_upper (bool) default=False: Store hostname in upper case (to match the prompt)
 
     CLI Argument        |  Class Argument
     ---------------------------------------------
@@ -32,9 +33,11 @@ class Netbox(TestbedCreator):
     --encode-password   |  encode_password=True
     --topology          |  topology=True
     --verify=False      |  verify=False
+    --host_upper=True   |  host_upper=True
     --url_filter=value  |  url_filter=value
     --def_user=value    |  def_user=value
     --def_pass=value    |  def_pass=value
+    --tag_telnet=value  |  tag_telnet=value
 
     pyATS Examples:
         pyats create testbed netbox --output=out --netbox-url=https://netbox.com
@@ -61,9 +64,11 @@ class Netbox(TestbedCreator):
                 'encode_password': False,
                 'topology': False,
                 'verify': True,
-                'url_filter': '',
+                'host_upper': False,
+                'url_filter': None,
                 'def_user': None,
-                'def_pass': None
+                'def_pass': None,
+                'tag_telnet': None
             }
         }
 
@@ -227,7 +232,12 @@ class Netbox(TestbedCreator):
         headers = { "Authorization": token }
         data = {}
         topology = {}
-        url=f"api/dcim/devices/?format=json&{self._url_filter}"
+
+        if self._url_filter is None:
+            url=f"api/dcim/devices/?format=json"
+        else:
+            url=f"api/dcim/devices/?format=json&{self._url_filter}"
+
         devices_url = self._format_url(self._netbox_url, url)
         response = self._get_request(devices_url, headers, "results")
 
@@ -238,7 +248,12 @@ class Netbox(TestbedCreator):
 
         for device in response:
             is_valid = True
-            device_name = device["display_name"]
+
+            if self._host_upper is True:
+                device_name = device["display_name"].upper()
+            else:
+                device_name = device["display_name"]
+                
             logger.info("Retrieving associated data for {}..."
                                                         .format(device_name))
             device_id = device["id"]
@@ -267,8 +282,13 @@ class Netbox(TestbedCreator):
             ], mask_filter)
             found_ip = False
 
+            if self._tag_telnet is not None and self._tag_telnet in device['tags']:
+                protocol='telnet'
+            else:
+                protocol='ssh'
+
+            cli.setdefault("protocol", protocol)
             # Attempt to set connection protocol to primary IP, if found
-            cli.setdefault("protocol", "ssh")
             found_ip |= self._set_value_if_exists(cli, "ip", self._get_info(
                             device, ["primary_ip4", "address"], mask_filter))
             found_ip |= self._set_value_if_exists(cli, "ip",
