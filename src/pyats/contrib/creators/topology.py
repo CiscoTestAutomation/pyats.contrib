@@ -39,12 +39,14 @@ class Topology(TestbedCreator):
             'required': ['testbed_name'],
             'optional': {
                 'config_off': False,
-                'all_interfaces': False
+                'all_interfaces': False,
+                'exclude_ip': '',
+                'ignore_interfaces':''
             }
         }
     
     def connect_one_device(self, testbed, device):
-    
+        
         if not testbed.devices[device].connections:
             return {device: testbed.devices[device].is_connected()}
         if testbed.devices[device].is_connected():
@@ -99,6 +101,18 @@ class Topology(TestbedCreator):
 
 
     def configure_cdp_lldp_testbed (self, testbed, config_off):
+        """
+        Enables cdp and lldp for all devices in the testbed and recordes what
+        was enabled so that they can be turned off later
+        
+        Args:
+            testbed: testbed of devices to enable
+            config_off: toggle that makes script skip enabling cdp/lldp on devices
+        
+        Returns:
+            cdp_changed: set of devices where cdp was enabled
+            lldp_changed: set of devices where lldp was enabled
+        """
         cdp_changed = set()
         lldp_changed = set()
         if config_off:
@@ -109,18 +123,26 @@ class Topology(TestbedCreator):
             if not device.api.verify_cdp_status():
                 try:
                     device.api.configure_cdp()
-                except Exception as e:
-                    print(e)
+                except:
+                    log.error("Exception configuring cdp for {device}".format(device = device), exc_info = True)
                 cdp_changed.add(device.name)
             if not device.api.verify_lldp_status():
                 try:
                     device.api.configure_lldp()
-                except Exception as e:
-                    print(e)
+                except:
+                    log.error("Exception configuring cdp for {device}".format(device = device), exc_info = True)
                 lldp_changed.add(device.name)
         return cdp_changed, lldp_changed
 
     def unconfigure_cdp_lldp_testbed(self, testbed, cdp_set, lldp_set):
+        '''
+        unconfigures the cdp and lldp of devices that were enabled at the 
+        start of the script
+        Args:
+            testbed: testbed of devices to unconfigure
+            cdp_set: list of devices to unconfigure cdp on
+            lldp_set: list of devices to unconfigure lldp on
+        '''
         for device in cdp_set:
             try:
                 testbed.devices[device].api.unconfigure_cdp()
@@ -132,11 +154,11 @@ class Topology(TestbedCreator):
             except:
                 log.error("Exception unconfiguring lldp for {device}".format(device = device), exc_info = True)
 
-    def get_device_connections(self, device, device_list):
+    def get_device_connections(self, device, device_list, ip_net, int_skip):
         '''
         Take a device from a testbed and find all the adjacent devices
         '''
-        log.info('{device} connection info:')
+        log.info('{device} connection info:'.format(device = device.name))
         if not device.is_connected():
             return None
         connection_dict = {}
@@ -162,28 +184,44 @@ class Topology(TestbedCreator):
                     dest_host = m.groupdict()['hostname']
                 dest_port = connection['port_id']
                 interface = connection['local_interface']
-                ip_address = set ()
+                # if either the local or neigboring interface is in ignore list
+                # do not log the connection on move on to the next one
+                log.info('interface = {interface}, dest = {dest}'.format(interface = interface, dest = dest_port))
+                if interface in int_skip or dest_port in int_skip:
+                    log.info('skiped connection')
+                    continue
+                ip_set = set ()
+                # get the ip addresses for the neighboring device
                 x = connection.get('management_addresses')
                 if x is not None:
                     for address in x:
-                        ip_address.add(address)
+                        ip_set.add(address)
+                
                 x = connection.get('entry_addresses')
                 if x is not None:
                     for address in x:
-                        ip_address.add(address)
+                        ip_set.add(address)
+                skip = False
+                # if the ip addresses for the connection are in the range given
+                # by the cli, do not log the connection and move on
+                for ip in ip_set:
+                    print(ip)
+                    if ip_net is not None and ipaddress.IPv4Address(ip) in ip_net:
+                        skip = True
+                if skip:
+                    continue
                 os = self.get_os(connection['software_version'], connection['platform'])
                 # add the discovered information to both the connection_dict and the device_list
                 self.add_to_device_list( device_list, 
                                     dest_host, 
                                     dest_port, 
-                                    ip_address, 
+                                    ip_set, 
                                     os, 
                                     device.name)
                 self.add_to_connection_dict(connection_dict, 
                                         dest_host, 
                                         dest_port, 
-                                        ip_address, 
-                                        os, 
+                                        ip_set, 
                                         interface)
         # get and parse lldp information
         result = device.api.get_lldp_neighbors_info()
@@ -196,9 +234,20 @@ class Topology(TestbedCreator):
                     dest_port = port
                     dest_host = list(port_list[port]['neighbors'].keys())[0]
                     neighbor = port_list[dest_port]['neighbors'][dest_host]
+                    # if either the local or neigboring interface is in ignore list
+                    # do not log the connection on move on to the next one
+                    log.info('interface = {interface}, dest = {dest}'.format(interface = interface, dest = dest_port))
+                    if interface in int_skip or dest_port in int_skip:
+                        log.info('skiped connection')
+                        continue
+                    # if the ip addresses for the connection are in the range given
+                    # by the cli, do not log the connection and move on
                     ip_address = neighbor.get('management_address')
                     if ip_address is None:
                         ip_address = neighbor.get('management_address_v4')
+                    if ip_net is not None and ipaddress.IPv4Address(ip_address) in ip_net:
+                        continue
+
                     os = self.get_os(port_list[dest_port]['neighbors'][dest_host]['system_description'], '')
                     m = domain_filter.match(dest_host)
                     if m:
@@ -214,11 +263,14 @@ class Topology(TestbedCreator):
                                             dest_host, 
                                             dest_port, 
                                             ip_address, 
-                                            os, 
                                             interface)
         return connection_dict
 
     def add_to_device_list(self, device_list, dest_host, dest_port, ip_address, os, discover_name):
+        '''
+            Add the information needed to create the device in the testbed later to the specified
+            list
+        '''
         if dest_host not in device_list:
             device_list[dest_host] = {'ports': {dest_port}, 
                                     'ip':ip_address, 
@@ -230,7 +282,12 @@ class Topology(TestbedCreator):
             device_list[dest_host]['ports'].add(dest_port)
             device_list[dest_host]['ip'] = device_list[dest_host]['ip'].union(ip_address)
 
-    def add_to_connection_dict(self, connection_dict, dest_host, dest_port, ip_address, os, interface):
+    def add_to_connection_dict(self, connection_dict, dest_host, dest_port, ip_address,interface):
+        '''
+            Adds the information about a connection to be added to the topology
+            recording what device interface combo is connected to the given
+            interface and ip address involced in the connection
+        '''
         new_entry = {'dest_host': dest_host, 
                     'dest_port': dest_port, 
                     'ip_address': ip_address}
@@ -298,6 +355,10 @@ class Topology(TestbedCreator):
         
 
     def create_yaml_dict(self, testbed, f1):
+        '''
+        Take the information laid out in the testbed and then format it into a
+        dictionary to be integrated with the existing
+        '''
         yaml_dict = {'devices':{}, 'topology': {}}
         credential_dict, _ = self.get_credentials_and_proxies(f1)
         for device in testbed.devices.values():
@@ -339,6 +400,12 @@ class Topology(TestbedCreator):
                 f1 = safe_load(stream)
             except YAMLError as exc:
                 print(exc)
+        ip_net = None
+        if self._exclude_ip:
+            try:
+                ip_net = ipaddress.ip_network(self._exclude_ip)
+            except:
+                log.error('Ip range given is not valid')
         # get the credentials and proxies that are used so that they can be used 
         # when attempting to other devices on the testbed
         credential_dict, proxy_set = self.get_credentials_and_proxies(f1)
@@ -362,7 +429,7 @@ class Topology(TestbedCreator):
             if device in visited_devices or not testbed.devices[device].is_connected() or device in proxy_set:
                 visited_devices.add(device)
                 continue
-            result[device] = self.get_device_connections(testbed.devices[device], device_list)
+            result[device] = self.get_device_connections(testbed.devices[device], device_list, ip_net, self._ignore_interfaces)
 
             # if device being visited doesn't have a given interface, 
             # add the interface
@@ -375,7 +442,6 @@ class Topology(TestbedCreator):
 
             # add device to visited list
             visited_devices.add(device)
-        #pprint.pprint(device_list)
         pprint.pprint(result)
         # add any new devices found to test bed
         for new_dev in device_list:
@@ -460,7 +526,7 @@ class Topology(TestbedCreator):
                         int_list.append(testbed.devices[dev].interfaces[dest_int])
                     link = Link('Link_{num} '
                                 'devices: {device}'.format(num = len(testbed.links),
-                                                        device = name_set),
+                                                            device = name_set),
                                 interfaces = int_list)
                 # if the interface is already part of the link go over the other interfaces found in the result and add them to the link if they are not there already
                 else:
@@ -471,14 +537,14 @@ class Topology(TestbedCreator):
                         if testbed.devices[dev].interfaces[dest_int] not in link.interfaces:
                             link.connect_interface(testbed.devices[dev].interfaces[dest_int])
 
+        # get Ip address for interfaces
         for device in testbed.devices.values():
             self.get_interface_ip_address(device)
 
         self.unconfigure_cdp_lldp_testbed(testbed, cdp, lldp)
-        pprint.pprint(credential_dict)
         f2 = self.create_yaml_dict(testbed, f1)
-        pprint.pprint(f2)
-        # combine add the new information to existing info
+        log.info(f2)
+        # combine and add the new information to existing info
         for device in f2['devices']:
             if device not in f1['devices']:
                 f1['devices'][device] = f2['devices'][device]
