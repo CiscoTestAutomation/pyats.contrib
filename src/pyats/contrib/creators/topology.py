@@ -341,17 +341,12 @@ class Topology(TestbedCreator):
     def get_interface_ip_address(self, device):
         if not device.is_connected() or device.os not in os_list:
             return
-        int_list = []
         for interface in device.interfaces.values():
             if interface.ipv4 is None or interface.ipv6 is None:
-                int_list.append(interface.name)
-        if len(int_list) > 0:
-            result = device.api.get_interface_information(int_list)
-            for interface in result:
-                if result[interface][interface].get('ipv4') is not None:
-                    for ip_set in result[interface][interface]['ipv4']:
-                        ip = ipaddress.IPv4Interface(ip_set)
-                    device.interfaces[interface].ipv4 = ip
+                ip = device.api.get_interface_ip_address(interface.name)
+                if ip:
+                    ip = ipaddress.IPv4Interface(ip)
+                    interface.ipv4 = ip
         
 
     def create_yaml_dict(self, testbed, f1):
@@ -524,9 +519,7 @@ class Topology(TestbedCreator):
                         name_set.add(dev)
                         dest_int = entry['dest_port']
                         int_list.append(testbed.devices[dev].interfaces[dest_int])
-                    link = Link('Link_{num} '
-                                'devices: {device}'.format(num = len(testbed.links),
-                                                            device = name_set),
+                    link = Link('Link_{num} '.format(num = len(testbed.links)),
                                 interfaces = int_list)
                 # if the interface is already part of the link go over the other interfaces found in the result and add them to the link if they are not there already
                 else:
