@@ -338,8 +338,14 @@ class Topology(TestbedCreator):
         if 'NX-OS' in system_string or 'NX-OS' in platform_name:
             return 'nxos'
 
-    def get_interface_ip_address(self, device):
-        if not device.is_connected() or device.os not in os_list:
+    def get_interfaces_ip_address(self, device):
+        '''
+        get the ip address for all of the generated interfaces
+        on the give device
+        '''
+        print(device.name)
+        if not device.is_connected() or device.os not in os_list or len(device.interfaces) < 1:
+            print('skip')
             return
         for interface in device.interfaces.values():
             if interface.ipv4 is None or interface.ipv6 is None:
@@ -354,9 +360,11 @@ class Topology(TestbedCreator):
         Take the information laid out in the testbed and then format it into a
         dictionary to be integrated with the existing
         '''
+        log.info('Creating dictionary based on testbed')
         yaml_dict = {'devices':{}, 'topology': {}}
         credential_dict, _ = self.get_credentials_and_proxies(f1)
         for device in testbed.devices.values():
+            log.info(device.name)
             if device.name not in f1['devices']:
                 yaml_dict['devices'][device.name] = {'type': device.type,
                                                     'os': device.os,
@@ -369,13 +377,16 @@ class Topology(TestbedCreator):
                         pprint.pprint(device.connections[connect])
                         c[connect] = {'protocol': device.connections[connect]['protocol'],
                                         'ip': device.connections[connect]['ip'],
-                                        }
+                                    }
                     except:
                         continue
             interface_dict = {'interfaces': {}}        
             for interface in device.interfaces.values():
-                interface_dict['interfaces'][interface.name] = {'type': interface.type,
-                                                                'link': interface.link.name}
+                interface_dict['interfaces'][interface.name] = {'type': interface.type}
+                log.info(interface.name)
+                log.info(interface.link)
+                if interface.link is not None:
+                    interface_dict['interfaces'][interface.name]['link'] = interface.link.name
                 if interface.ipv4 is not None:
                     interface_dict['interfaces'][interface.name]['ipv4'] = str(interface.ipv4)
             yaml_dict['topology'][device.name] = interface_dict
@@ -494,7 +505,6 @@ class Topology(TestbedCreator):
                         interface_list = testbed.devices[new_dev].parse('show interfaces description')
                     except:
                         interface_list = testbed.devices[new_dev].parse('show interface description')
-                    print(interface_list)
                     for interface in interface_list['interfaces']:
                         if interface not in testbed.devices[new_dev].interfaces:
                             type_name = interface_filter.match(interface)
@@ -510,7 +520,9 @@ class Topology(TestbedCreator):
             for interface_name in result[device]:
                 # get the interface found in the connection on the device searched
                 interface = testbed.devices[device].interfaces[interface_name]
-                # if the interface is not already part of a link get a list of all interfaces involved in the link and create a new link object with the associated interfaces
+                # if the interface is not already part of a link get a list of 
+                # all interfaces involved in the link and create a new link 
+                # object with the associated interfaces
                 if interface.link is None:
                     int_list = [interface]
                     name_set = {device}
@@ -519,9 +531,11 @@ class Topology(TestbedCreator):
                         name_set.add(dev)
                         dest_int = entry['dest_port']
                         int_list.append(testbed.devices[dev].interfaces[dest_int])
-                    link = Link('Link_{num} '.format(num = len(testbed.links)),
+                    link = Link('Link_{num}'.format(num = len(testbed.links)),
                                 interfaces = int_list)
-                # if the interface is already part of the link go over the other interfaces found in the result and add them to the link if they are not there already
+                # if the interface is already part of the link go over the 
+                # other interfaces found in the result and add them to the link
+                # if they are not there already
                 else:
                     link = interface.link
                     for entry in result[device][interface_name]:
@@ -532,7 +546,7 @@ class Topology(TestbedCreator):
 
         # get Ip address for interfaces
         for device in testbed.devices.values():
-            self.get_interface_ip_address(device)
+            self.get_interfaces_ip_address(device)
 
         self.unconfigure_cdp_lldp_testbed(testbed, cdp, lldp)
         f2 = self.create_yaml_dict(testbed, f1)
