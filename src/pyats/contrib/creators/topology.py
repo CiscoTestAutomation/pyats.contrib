@@ -40,7 +40,7 @@ class Topology(TestbedCreator):
             'optional': {
                 'config_off': False,
                 'all_interfaces': False,
-                'exclude_ip': '',
+                'exclude_network': '',
                 'ignore_interfaces':''
             }
         }
@@ -58,7 +58,6 @@ class Topology(TestbedCreator):
                                                 learn_hostname = True)
                 break
             except Exception as e:
-                print(e)
                 testbed.devices[device].destroy()               
         return testbed.devices[device].is_connected()
 
@@ -205,9 +204,11 @@ class Topology(TestbedCreator):
                 # if the ip addresses for the connection are in the range given
                 # by the cli, do not log the connection and move on
                 for ip in ip_set:
-                    print(ip)
-                    if ip_net is not None and ipaddress.IPv4Address(ip) in ip_net:
-                        skip = True
+                    if ip_net is not None:
+                        for net in ip_net:
+                            if ipaddress.IPv4Address(ip) in net:
+                                log.info('Ip {ip} found in network {net}'.format(ip = ip, net = net))
+                                skip = True
                 if skip:
                     continue
                 os = self.get_os(connection['software_version'], connection['platform'])
@@ -245,8 +246,14 @@ class Topology(TestbedCreator):
                     ip_address = neighbor.get('management_address')
                     if ip_address is None:
                         ip_address = neighbor.get('management_address_v4')
-                    if ip_net is not None and ipaddress.IPv4Address(ip_address) in ip_net:
-                        continue
+                    if ip_address is not None and ip_net:
+                        skip = False
+                        for net in ip_net:
+                            if ipaddress.IPv4Address(ip) in net:
+                                log.info('Ip {ip} found in network {net}'.format(ip = ip, net = net))
+                                skip = True
+                        if skip:
+                            continue
 
                     os = self.get_os(port_list[dest_port]['neighbors'][dest_host]['system_description'], '')
                     m = domain_filter.match(dest_host)
@@ -343,9 +350,7 @@ class Topology(TestbedCreator):
         get the ip address for all of the generated interfaces
         on the give device
         '''
-        print(device.name)
         if not device.is_connected() or device.os not in os_list or len(device.interfaces) < 1:
-            print('skip')
             return
         for interface in device.interfaces.values():
             if interface.ipv4 is None or interface.ipv6 is None:
@@ -406,12 +411,14 @@ class Topology(TestbedCreator):
                 f1 = safe_load(stream)
             except YAMLError as exc:
                 print(exc)
-        ip_net = None
-        if self._exclude_ip:
-            try:
-                ip_net = ipaddress.ip_network(self._exclude_ip)
-            except:
-                log.error('Ip range given is not valid')
+        ip_net = []
+        if self._exclude_network:
+            x = self._exclude_network.strip(',')
+            for ip in x:
+                try:
+                    ip_net.append(ipaddress.ip_network(ip))
+                except:
+                    log.error('Ip range given {ip} is not valid'.format(ip=ip))
         # get the credentials and proxies that are used so that they can be used 
         # when attempting to other devices on the testbed
         credential_dict, proxy_set = self.get_credentials_and_proxies(f1)
@@ -530,7 +537,8 @@ class Topology(TestbedCreator):
                         dev = entry['dest_host']
                         name_set.add(dev)
                         dest_int = entry['dest_port']
-                        int_list.append(testbed.devices[dev].interfaces[dest_int])
+                        if testbed.devices[dev].interfaces[dest_int] not in int_list:
+                            int_list.append(testbed.devices[dev].interfaces[dest_int])
                     link = Link('Link_{num}'.format(num = len(testbed.links)),
                                 interfaces = int_list)
                 # if the interface is already part of the link go over the 
