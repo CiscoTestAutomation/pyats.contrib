@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pprint
 from genie.conf.base import Testbed, Device, Interface, Link
 from genie.conf import Genie
+from genie.testbed import load
 from pyats.async_ import pcall
 from .creator import TestbedCreator
 from genie.metaparser.util.exceptions import SchemaEmptyParserError
@@ -142,9 +143,15 @@ class Topology(TestbedCreator):
             device
         '''
         if device.name in self.cdp_set:
-            device.api.unconfigure_cdp()
+            try:
+                device.api.unconfigure_cdp()
+            except Exception as e:
+                log.error('Error unconfiguring cdp on device {}: {}'.format(device.name, e))
         if device.name in self.lldp_set:
-            device.api.unconfigure_lldp()
+            try:
+                device.api.unconfigure_lldp()
+            except Exception as e:
+                log.error('Error unconfiguring lldp on device {}: {}'.format(device.name, e))
 
     def process_neigbor_data(self, testbed, device_list, ip_net, int_skip):
         '''
@@ -210,6 +217,7 @@ class Topology(TestbedCreator):
 
         # get and parse cdp information
         result = data['cdp']
+        log.info('cdp neighbor information: {}'.format(result))
         if result is not None:
             # for every cdp entry find the os, destination name, destination 
             # port, and the ip-address and then add them to the relevant lists
@@ -395,6 +403,8 @@ class Topology(TestbedCreator):
         for device in testbed['devices'].values():
 
             # get all connections used in the testbed
+            if 'credentials' not in device:
+                continue
             for cred in device['credentials']:
                 if cred not in credential_dict :
                     credential_dict[cred] = dict(device['credentials'][cred])
@@ -488,7 +498,7 @@ class Topology(TestbedCreator):
             dict: The intermediate dictionary format of the testbed data.
     
         """
-        testbed = Genie.init(self._testbed_name)
+        testbed = load(self._testbed_name)
         with open(self._testbed_name, 'r') as stream:
             try:
                 f1 = safe_load(stream)
@@ -516,7 +526,7 @@ class Topology(TestbedCreator):
                                     len(testbed.devices),
                                     self._config_off)
             new_devices = {}
-            
+            time.sleep(30)
             #get a dictionary of all currently accessable devices connections
             result = self.process_neigbor_data(testbed, device_list, ip_net, 
                                             self._ignore_interfaces)
