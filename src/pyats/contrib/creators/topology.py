@@ -89,6 +89,7 @@ class Topology(TestbedCreator):
                                                 learn_hostname = True)
                 break
             except Exception:
+                # if connection fails, erase the connection from connection mgr
                 testbed.devices[device].destroy()
 
         return self.configure_device_cdp_and_lldp(testbed.devices[device])
@@ -148,6 +149,7 @@ class Topology(TestbedCreator):
                 results[entry] = executor.submit(self.connect_one_device,
                                                 testbed,
                                                 entry)
+
         # read the configuration results for each device and if the cdp or lldp configured
         # add the device name to the respective set
         for entry in results:
@@ -157,47 +159,6 @@ class Topology(TestbedCreator):
                 self.lldp_configured.add(entry)
         log.info('Devices that had cdp configured: {}, '
                  'Devices that had lldp configured: {}'.format(self.cdp_configured, self.lldp_configured))
-
-    def unconfigure_neighbor_discovery_protocols(self, device):
-        '''
-            Unconfigures cdp and lldp on device if they were enabled by the
-            script earlier
-        '''
-
-        # for each device in the list that had cdp configured by script,
-        # disable cdp
-        if device.name in self.cdp_configured:
-            try:
-                device.api.unconfigure_cdp()
-            except Exception as e:
-                log.error('Error unconfiguring cdp on device {}: {}'.format(device.name, e))
-
-        # for each device in the list that had lldp configured by script,
-        # disable lldp
-        if device.name in self.lldp_configured:
-            try:
-                device.api.unconfigure_lldp()
-            except Exception as e:
-                log.error('Error unconfiguring lldp on device {}: {}'.format(device.name, e))
-
-    def get_neighbor_info(self, device):
-        '''
-        Method designed to be used with pcall, gets the devices cdp and lldp
-        neighbor data and then returns it in a dictionary format
-        '''
-        cdp = []
-        lldp = []
-        if device.os not in supported_os and not device.is_connected():
-            return {device.name: {'cdp':cdp, 'lldp':lldp}}
-        try:
-            cdp = device.api.get_cdp_neighbors_info()
-        except Exception:
-            log.error("Exception occurred getting cdp info", exc_info = True)
-        try:
-            lldp = device.api.get_lldp_neighbors_info()
-        except Exception:
-            log.error("Exception occurred getting lldp info", exc_info = True)
-        return {device.name: {'cdp':cdp, 'lldp':lldp}}
 
     def process_neigbor_data(self, testbed, device_list, ip_net):
         '''
@@ -222,7 +183,10 @@ class Topology(TestbedCreator):
         conn_dict = {}
 
         # process the connection data retrieved from getting cdp and lldp neighbors 
-        # and write it into a dictionary
+        # and write it into a dictionary of format 
+        # {device:{interface with connection:{'dest_host': destination device,
+        #                                     'dest_port': destination device port, 
+        #                                     'ip_address': ip address of connection found}}} 
         for entry in result:
             for device in entry:
                 conn_dict[device] = self.get_device_connections(entry[device], 
@@ -271,9 +235,13 @@ class Topology(TestbedCreator):
             log.info('interface = {interface},'
                         'dest = {dest}'.format(interface = interface, 
                                             dest = dest_port))
-            if interface in self._exclude_interfaces or dest_port in self._exclude_interfaces:
-                log.info('connection or dest interface is found in' 
-                        'ignore interface list, skipping connection')
+            if interface in self._exclude_interfaces:
+                log.info('connection interface {} is found in ' 
+                        'ignore interface list, skipping connection'.format(interface))
+                continue
+            if dest_port in self._exclude_interfaces:
+                log.info('destination interface {} is found in ' 
+                        'ignore interface list, skipping connection'.format(dest_port))
                 continue
             ip_set = set()
 
@@ -301,12 +269,12 @@ class Topology(TestbedCreator):
 
             # add the discovered information to 
             # both the connection_dict and the device_list
-            self.add_to_device_list( device_list, 
-                                dest_host, 
-                                dest_port, 
-                                ip_set, 
-                                os, 
-                                entry)
+            self.add_to_device_list(device_list, 
+                                    dest_host, 
+                                    dest_port, 
+                                    ip_set, 
+                                    os, 
+                                    entry)
             self.add_to_connection_dict(connection_dict, 
                                     dest_host, 
                                     dest_port, 
@@ -320,6 +288,7 @@ class Topology(TestbedCreator):
             connection_dict and the device_list
         '''
         # filter to strip out the domain name from the system name
+        # Ex. n77-1.cisco.com becomes n77-1
         domain_filter = re.compile(r'^.*?(?P<hostname>[-\w]+)\s?')
 
         for interface, connection in result['interfaces'].items():
@@ -382,7 +351,9 @@ class Topology(TestbedCreator):
 
     def get_device_connections(self, data, entry, device_list, ip_net, testbed):
         '''
-        Take a device from a testbed and find all the adjacent devices
+        Take a device from a testbed and find all the adjacent devices.
+        First it processes the devices cdp information and writes it into the dict
+        then it processes the lldp information and adds new data to the dict
         '''
         connection_dict = {}
         
@@ -519,12 +490,12 @@ class Topology(TestbedCreator):
                                                     'credentials': credential_dict,
                                                     'connections': {}
                                                     }
-                c = yaml_dict['devices'][device.name]['connections']
+                conn_dict = yaml_dict['devices'][device.name]['connections']
                 for connect in device.connections:
                     try:
-                        c[connect] = {'protocol':device.connections[connect]['protocol'],
-                                      'ip': device.connections[connect]['ip'],
-                                    }
+                        conn_dict[connect] = {'protocol':device.connections[connect]['protocol'],
+                                              'ip': device.connections[connect]['ip'],
+                                             }
                     except Exception:
                         continue
 
@@ -666,6 +637,47 @@ class Topology(TestbedCreator):
                         dest_int = entry['dest_port']
                         if testbed.devices[dev].interfaces[dest_int] not in link.interfaces:
                             link.connect_interface(testbed.devices[dev].interfaces[dest_int])
+
+    def unconfigure_neighbor_discovery_protocols(self, device):
+        '''
+            Unconfigures cdp and lldp on device if they were enabled by the
+            script earlier
+        '''
+
+        # for each device in the list that had cdp configured by script,
+        # disable cdp
+        if device.name in self.cdp_configured:
+            try:
+                device.api.unconfigure_cdp()
+            except Exception as e:
+                log.error('Error unconfiguring cdp on device {}: {}'.format(device.name, e))
+
+        # for each device in the list that had lldp configured by script,
+        # disable lldp
+        if device.name in self.lldp_configured:
+            try:
+                device.api.unconfigure_lldp()
+            except Exception as e:
+                log.error('Error unconfiguring lldp on device {}: {}'.format(device.name, e))
+
+    def get_neighbor_info(self, device):
+        '''
+        Method designed to be used with pcall, gets the devices cdp and lldp
+        neighbor data and then returns it in a dictionary format
+        '''
+        cdp = {}
+        lldp = {}
+        if device.os not in supported_os and not device.is_connected():
+            return {device.name: {'cdp':cdp, 'lldp':lldp}}
+        try:
+            cdp = device.api.get_cdp_neighbors_info()
+        except Exception:
+            log.error("Exception occurred getting cdp info", exc_info = True)
+        try:
+            lldp = device.api.get_lldp_neighbors_info()
+        except Exception:
+            log.error("Exception occurred getting lldp info", exc_info = True)
+        return {device.name: {'cdp':cdp, 'lldp':lldp}}
 
     def _generate(self):
         """ Takes testbed information and writes the topology information into
