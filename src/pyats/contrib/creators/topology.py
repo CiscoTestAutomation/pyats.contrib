@@ -48,6 +48,9 @@ class Topology(TestbedCreator):
                     if found as part of a connection
             topo-only: if true script will only find connections between devices
                     in the testbed and will not discover new devices
+            alias: takes argument in format device:alias,device2:alias2 and
+                    and indicates which alias should be used to connect to the 
+                    device first
     """
         
     def _init_arguments(self):
@@ -60,6 +63,7 @@ class Topology(TestbedCreator):
         self.cdp_configured = set()
         self.lldp_configured = set()
         self.visited_devices = set()
+        self.ad = {}
         return {
             'required': ['testbed_name'],
             'optional': {
@@ -68,7 +72,8 @@ class Topology(TestbedCreator):
                 'exclude_network': '',
                 'exclude_interfaces':'',
                 'topo_only': False,
-                'timeout': 10
+                'timeout': 10,
+                'alias': ''
             }
         }
     
@@ -81,7 +86,27 @@ class Topology(TestbedCreator):
         # the connections it has. If the device is not connected just return
         # that cdp and lldp were not configured
         if testbed.devices[device].os not in supported_os:
-            return [False, False]          
+            return [False, False]
+
+        # if there is a prefered alias for the device, attempt to connect with device
+        # using that alias, if the attmept fails or the alias doesn't exist, it will
+        # attempt to connect normally
+        if device in self.ad:
+            if self.ad[device] in testbed.devices[device].connections:
+                log.info('Attempting to connect to {} with alias {}'.format(device, self.ad[device]))
+                try:
+                    testbed.devices[device].connect(via = str(self.ad[device]),
+                                                    connection_timeout = 10,
+                                                    learn_hostname = True)
+                except:        
+                    log.info('Failed to connect to {} with alias {}'.format(device, self.ad[device]))
+                    testbed.devices[device].destroy()
+            else:
+                log.info('Device {} does not have a connection with alias {}'.format(device, self.ad[device]))
+
+        if testbed.devices[device].is_connected():
+            return self.configure_device_cdp_and_lldp(testbed.devices[device])
+
         for one_connect in testbed.devices[device].connections:                         
             try:
                 testbed.devices[device].connect(via = str(one_connect),
@@ -701,6 +726,16 @@ class Topology(TestbedCreator):
                     ip_net.append(ipaddress.ip_network(ip))
                 except Exception:
                     log.error('Ip range given {ip} is not valid'.format(ip=ip))
+        # take aliases entered by user and format it into dictionary
+        if self._alias:
+            terms = self._alias.split(',')
+            for item in terms:
+                spli = item.split(':')
+                if len(spli) != 2:
+                    log.info('{} is not valid entry'.format(item))
+                    continue
+                self.ad[spli[0]] = spli[1]
+
         # get the credentials and proxies that are used so that they can be used 
         # when attempting to other devices on the testbed
         credential_dict, proxy_set = self.get_credentials_and_proxies(f1)
