@@ -73,7 +73,8 @@ class Topology(TestbedCreator):
                 'exclude_interfaces':'',
                 'topo_only': False,
                 'timeout': 10,
-                'alias': ''
+                'alias': '',
+                'ssh_only': False
             }
         }
     
@@ -107,18 +108,19 @@ class Topology(TestbedCreator):
         if testbed.devices[device].is_connected():
             return self.configure_device_cdp_and_lldp(testbed.devices[device])
 
-        for one_connect in testbed.devices[device].connections:                         
-            try:
-                testbed.devices[device].connect(via = str(one_connect),
-                                                connection_timeout = 10,
-                                                learn_hostname = True)
-                break
-            except Exception:
-                # if connection fails, erase the connection from connection mgr
-                testbed.devices[device].destroy()
+        for one_connect in testbed.devices[device].connections:
+            if not self._ssh_only or (self._ssh_only and one_connect.protocol == 'ssh'):                       
+                try:
+                    testbed.devices[device].connect(via = str(one_connect),
+                                                    connection_timeout = 10,
+                                                    learn_hostname = True)
+                    break
+                except Exception:
+                    # if connection fails, erase the connection from connection mgr
+                    testbed.devices[device].destroy()
 
         return self.configure_device_cdp_and_lldp(testbed.devices[device])
-        
+
     def configure_device_cdp_and_lldp(self, dev):
         '''
             If allowed to edit device configuration
@@ -374,11 +376,37 @@ class Topology(TestbedCreator):
                                         interface,
                                         entry)
 
+    def write_proxy_chain(self, finder_name, testbed):
+        ''' 
+            creates a set of proxies for ssh connections
+            creating a set of commands for there are mutiple
+            proxies involved
+        '''
+        fd = testbed.devices[finder_name]
+        for conn in fd.connections:
+            if conn.protocol =='ssh' and 'proxy' in conn:
+                new_proxy = conn.proxy
+                conn_ip = conn.ip
+                break
+        else:
+            new_proxy = None
+        if new_proxy is None:
+            return finder_name
+        if isinstance(new_proxy, list):
+            new_proxy[-1]['command'] = 'ssh {}'.format(conn_ip)
+            new_proxy.append({'device': finder_name})
+            return new_proxy
+        if isinstance(new_proxy,str):
+            proxy_steps = []
+            proxy_steps.append({'device':new_proxy,'command':'ssh {}'.format(conn_ip)})
+            proxy_steps.append({'device':finder_name})
+            return proxy_steps
+
     def get_device_connections(self, data, entry, device_list, ip_net, testbed):
         '''
-        Take a device from a testbed and find all the adjacent devices.
-        First it processes the devices cdp information and writes it into the dict
-        then it processes the lldp information and adds new data to the dict
+            Take a device from a testbed and find all the adjacent devices.
+            First it processes the devices cdp information and writes it into the dict
+            then it processes the lldp information and adds new data to the dict
         '''
         connection_dict = {}
         
@@ -555,6 +583,7 @@ class Topology(TestbedCreator):
         '''
             Writes any new devices found in the device list into the testbed
             and adds any missing interfaces into devices that are missing it
+            TO DO: add option to create telnet connections
         '''
         # filter to strip out the numbers from an interface to create a type name
         # example: ethernet0/3 becomes ethernet
@@ -582,9 +611,9 @@ class Topology(TestbedCreator):
 
                     # create connection to device with given ip using a device that found it
                     connections[str(count) + 'finder_proxy'] = {
-                            'protocol': 'telnet',
+                            'protocol': 'ssh',
                             'ip': ip,
-                            'proxy': device_list[new_dev]['finder']
+                            'proxy': self.write_proxy_chain(device_list[new_dev]['finder'], testbed)
                             }
 
                 # create the new device
