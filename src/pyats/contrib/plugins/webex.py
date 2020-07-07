@@ -1,11 +1,14 @@
+import json
 import logging
 import os
-import json
-import requests
-from pyats.easypy.plugins.bases import BasePlugin
-from pyats import configuration as cfg
+import socket
 
-logger = logging.getLogger("pyats.contrib.webexnotify")
+import requests
+
+from pyats import configuration as cfg
+from pyats.easypy.plugins.bases import BasePlugin
+
+logger = logging.getLogger(__name__)
 
 MESSAGE_URL = 'https://api.ciscospark.com/v1/messages'
 
@@ -77,6 +80,7 @@ class WebExTeamsNotifyPlugin(BasePlugin):
 
 
     def post_job(self, job):
+        # Get WebEx info from arguments or configuration
         token = self.runtime.args.webex_token or cfg.get('webex.token')
         space = self.runtime.args.webex_space or cfg.get('webex.space')
         email = self.runtime.args.webex_email or cfg.get('webex.email')
@@ -94,7 +98,46 @@ class WebExTeamsNotifyPlugin(BasePlugin):
                         'notification will be sent')
             return
 
-        payload = {'markdown': MESSAGE_TEMPLATE.format(job=job)}
+        # Format message with info from job run
+        msg = MESSAGE_TEMPLATE.format(job=job)
+
+        try:
+            # Attempt to get path for TRADe logs
+            if not self.runtime.runinfo.no_upload:
+                msg += '\n\nView TRADe logs at: %s'\
+                       % self.runtime.runinfo.log_url
+        except AttributeError:
+            pass
+
+        try:
+            host = job.runtime.env['host']['name']
+            # Determine if liveview is running
+            if self.runtime.args.liveview and\
+                    self.runtime.args.liveview_keepalive:
+                # Liveview will set this to the assigned port if not specified
+                port = self.runtime.args.liveview_port
+                try:
+                    # Attempt to add a link using the host domain name
+                    addr = socket.getfqdn()
+                    socket.gethostbyname(addr)
+                    msg += '\n\nLogs can be viewed with the pyATS Log Viewer '\
+                           'at: http://%s:%s' % (addr, port)
+                except OSError:
+                    msg += '\n\nLogs can be viewed in your browser by '\
+                           'connecting to %s with port %s' % (host, port)
+            else:
+                # Show command to run liveview
+                archive = self.runtime.runinfo.archive_file
+                if archive:
+                    msg += '\n\nRun the following command on %s to view logs '\
+                           'from this job: `pyats logs view %s --host 0.0.0.0`'\
+                           % (host, archive)
+
+        except AttributeError:
+            pass
+
+        # Build payload
+        payload = {'markdown': msg}
         if space:
             payload['roomId'] = space
         elif email:
@@ -103,6 +146,7 @@ class WebExTeamsNotifyPlugin(BasePlugin):
         logger.info('Sending WebEx Teams notification')
 
         try:
+            # Attempt POST
             r = requests.post(MESSAGE_URL,
                               data=json.dumps(payload),
                               headers=headers)
@@ -112,6 +156,7 @@ class WebExTeamsNotifyPlugin(BasePlugin):
             logger.exception('Failed to send WebEx Teams notification:')
 
 
+# entrypoint
 webex_plugin = {
     'plugins': {
         'WebExTeamsNotifyPlugin': {
