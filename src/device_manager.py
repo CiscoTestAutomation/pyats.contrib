@@ -22,12 +22,10 @@ class Device_Manager():
         self.alias_dict = alias_dict
         self.timeout = timeout
 
-    def connect_all_devices(self, testbed, limit):
+    def connect_all_devices(self, limit):
         '''
             Creates a ThreadPoolExecutor designed to connect to each device in 
-            testbed
             Args:
-                testbed = testbed whose devices you want to connect
                 limit = max number of threads to spawn
                 
             Returns:
@@ -37,10 +35,9 @@ class Device_Manager():
 
         # Set up a thread pool executor to connect to all devices at the same time    
         with ThreadPoolExecutor(max_workers = limit) as executor:
-            for entry in testbed.devices:
+            for entry in self.testbed.devices:
                 log.info('attempting to connect to {entry}'.format(entry = entry))
                 results[entry] = executor.submit(self._connect_one_device,
-                                                testbed,
                                                 entry)
 
         # read the configuration results for each device and if the cdp or lldp configured
@@ -53,12 +50,11 @@ class Device_Manager():
         log.info('Devices that had cdp configured: {}, '
                     'Devices that had lldp configured: {}'.format(self.cdp_configured, self.lldp_configured))
 
-    def _connect_one_device(self, testbed, device):
+    def _connect_one_device(self, device):
         '''
             connect to the given device in the testbed using the given
             connections and after that enable cdp and lldp if allowed
             Args:
-                testbed: testbed where device exists
                 device: name of device being connected
             Returns:
                 [bool cdp_configured, bool lldp_configured]
@@ -66,40 +62,40 @@ class Device_Manager():
         # if the device has a supported os try to connect through each of 
         # the connections it has. If the device is not connected just return
         # that cdp and lldp were not configured
-        if testbed.devices[device].os not in supported_os:
+        if self.testbed.devices[device].os not in supported_os:
             return [False, False]
 
         # if there is a prefered alias for the device, attempt to connect with device
         # using that alias, if the attmept fails or the alias doesn't exist, it will
         # attempt to connect normally
         if device in self.alias_dict:
-            if self.alias_dict[device] in testbed.devices[device].connections:
+            if self.alias_dict[device] in self.testbed.devices[device].connections:
                 log.info('Attempting to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                 try:
-                    testbed.devices[device].connect(via = str(self.alias_dict[device]),
+                    self.testbed.devices[device].connect(via = str(self.alias_dict[device]),
                                                     connection_timeout = 10,
                                                     learn_hostname = True)
                 except:        
                     log.info('Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
-                    testbed.devices[device].destroy()
+                    self.testbed.devices[device].destroy()
             else:
                 log.info('Device {} does not have a connection with alias {}'.format(device, self.alias_dict[device]))
 
-        if testbed.devices[device].connected:
-            return self.configure_neighbor_discovery_protocols(testbed.devices[device])
+        if self.testbed.devices[device].connected:
+            return self.configure_neighbor_discovery_protocols(self.testbed.devices[device])
 
-        for one_connect in testbed.devices[device].connections:
+        for one_connect in self.testbed.devices[device].connections:
             if not self.ssh_only or (self.ssh_only and one_connect.protocol == 'ssh'):                       
                 try:
-                    testbed.devices[device].connect(via = str(one_connect),
+                    self.testbed.devices[device].connect(via = str(one_connect),
                                                     connection_timeout = 10,
                                                     learn_hostname = True)
                     break
                 except Exception:
                     # if connection fails, erase the connection from connection mgr
-                    testbed.devices[device].destroy()
+                    self.testbed.devices[device].destroy()
 
-        return self.configure_neighbor_discovery_protocols(testbed.devices[device])
+        return self.configure_neighbor_discovery_protocols(self.testbed.devices[device])
 
     def configure_neighbor_discovery_protocols(self, dev):
         '''
@@ -173,7 +169,7 @@ class Device_Manager():
         '''
         cdp = {}
         lldp = {}
-        if device.os not in supported_os and not device.connected:
+        if device.os not in supported_os or not device.connected:
             return {device.name: {'cdp':cdp, 'lldp':lldp}}
         try:
             cdp = device.api.get_cdp_neighbors_info()
@@ -200,7 +196,7 @@ class Device_Manager():
                     ip = ipaddress.IPv4Interface(ip)
                     interface.ipv4 = ip
     
-    def get_credentials_and_proxies(self, testbed):
+    def get_credentials_and_proxies(self):
         '''
         Takes a copy of the current credentials in the testbed for use in 
         connecting to other devices
@@ -212,7 +208,7 @@ class Device_Manager():
         '''
         credential_dict = {}
         proxy_list = set()
-        for device in testbed['devices'].values():
+        for device in self.testbed.devices.values():
 
             # get all connections used in the testbed
             if 'credentials' not in device:

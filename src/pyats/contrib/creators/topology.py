@@ -2,7 +2,6 @@ import os
 import re
 import sys
 import time
-import pprint
 import logging
 import argparse
 import ipaddress
@@ -168,29 +167,33 @@ class Topology(TestbedCreator):
                         'ignore interface list, skipping connection'.format(
                             dest_port))
                 continue
-            ip_set = set()
 
             # get the ip addresses for the neighboring device
             mgmt_address = connection.get('management_addresses')
-            if mgmt_address is not None:
-                ip_set.union({ip for ip in mgmt_address})
-            
             ent_address = connection.get('entry_addresses')
-            if ent_address is not None:
-                ip_set.union({ip for ip in ent_address})
+            if mgmt_address is None and ent_address is None:
+                ip_set = set()
+            elif mgmt_address is None and ent_address is not None:
+                ip_set = {ip for ip in ent_address}
+            elif ent_address is None and mgmt_address is not None:
+                ip_set = {ip for ip in mgmt_address}
+            else:
+                ip_set = {ip for ip in mgmt_address}.union({ip for ip in ent_address})
 
             # if the ip addresses for the connection are in the range given
             # by the cli, do not log the connection and move on
-            for ip, net in product(ip_set, ip_net):
-                if ipaddress.IPv4Address(ip) in net:
-                    log.info('IP {ip} found in' 
-                            'ignored network {net}'.format(ip = ip, net = net))
-                    break
-            else:
-                continue
+                stop = False
+                for ip, net in product(ip_set, ip_net):
+                    if ipaddress.IPv4Address(ip) in net:
+                        log.info('IP {ip} found in' 
+                                'ignored network {net}'.format(ip = ip, net = net))
+                        stop = True
+                        break
+                if stop:
+                    continue
             os = self.get_os(connection['software_version'], 
-                                connection['platform'])
-
+                             connection['platform'])
+            log.info('dest host = {}, dest port = {}, interface= {}, device = {}'.format(dest_host,dest_port, interface, entry))
             # add the discovered information to 
             # both the connection_dict and the device_list
             self.add_to_device_list(device_list, dest_host, dest_port, ip_set, 
@@ -247,20 +250,22 @@ class Topology(TestbedCreator):
                 if ip_address is None:
                     ip_address = neighbor.get('management_address_v4')
                 if ip_address is not None and ip_net:
+                    stop = False
                     for net in ip_net:
                         if ipaddress.IPv4Address(ip_address) in net:
                             log.info('IP {ip} found in ignored '
                                         'network {net}'.format(ip = ip_address, 
                                                             net = net))
+                            stop = True
                             break
-                    else:
+                    if stop:
                         continue
 
                 os = self.get_os(neighbor['system_description'], '')
                 m = domain_filter.match(dest_host)
                 if m:
                     dest_host = m.groupdict()['hostname']
-                    
+                log.info('dest host = {}, dest port = {}, interface= {}, device = {}'.format(dest_host,dest_port, interface, entry))
                 # add the discovered information to both 
                 # the connection_dict and the device_list    
                 self.add_to_device_list(device_list, dest_host, dest_port, 
@@ -278,9 +283,10 @@ class Topology(TestbedCreator):
         '''
         fd = testbed.devices[finder_name]
         for conn in fd.connections:
-            if conn.protocol =='ssh' and 'proxy' in conn:
-                new_proxy = conn.proxy
-                conn_ip = conn.ip
+            connection_detail = fd.connections[conn]
+            if connection_detail.protocol =='ssh' and 'proxy' in connection_detail:
+                new_proxy = connection_detail.proxy
+                conn_ip = connection_detail.ip
                 break
         else:
             new_proxy = None
@@ -411,19 +417,20 @@ class Topology(TestbedCreator):
         if 'NX-OS' in system_string or 'NX-OS' in platform_name:
             return 'nxos'
         
-    def create_yaml_dict(self, testbed, f1):
+    def create_yaml_dict(self, testbed, f1, dev_man):
         '''
         Take the information laid out in the testbed and then format it into a
         dictionary to be integrated with the existing
         Args:
             testbed: testbed whose devices and connections are added
             f1: exisiting yaml file that will have the new data added to it
+            dev_man: device manager object used to get credentials and proxies
         Returns:
             dictionay in yaml format
         '''
         log.info('Creating dictionary based on testbed')
         yaml_dict = {'devices':{}, 'topology': {}}
-        credential_dict, _ = self.get_credentials_and_proxies(f1)
+        credential_dict, _ = dev_man.get_credentials_and_proxies()
 
         # write new devices into dict
         for device in testbed.devices.values():
@@ -445,7 +452,7 @@ class Topology(TestbedCreator):
 
             # write in the interfaces and link from devices into testbed
             interface_dict = {'interfaces': {}}
-            log.info('Adding interface infor for {}'.format(device.name))        
+            log.info('Adding interface info for {}'.format(device.name))        
             for interface in device.interfaces.values():
                 interface_dict['interfaces'][interface.name] = {'type': interface.type}
                 if interface.link is not None:
@@ -499,7 +506,7 @@ class Topology(TestbedCreator):
                     for proxy in proxy_set:
 
                         # create connection using possible proxies
-                        connections[str(count) + proxy] = {
+                        connections['ssh' + proxy] = {
                             'protocol': 'ssh',
                             'ip': ip,
                             'proxy': proxy
@@ -561,7 +568,9 @@ class Topology(TestbedCreator):
                 connection_dict: Dictionary with connections found earlier
                 testbed: testbed to write connections into
         '''
+        log.info('adding connections to dict')
         for device in connection_dict:
+            log.info('Writing connections found in {}'.format(device))
             for interface_name in connection_dict[device]:
                 # get the interface found in the connection on the device searched
                 interface = testbed.devices[device].interfaces[interface_name]
@@ -591,6 +600,7 @@ class Topology(TestbedCreator):
                         dest_int = entry['dest_port']
                         if testbed.devices[dev].interfaces[dest_int] not in link.interfaces:
                             link.connect_interface(testbed.devices[dev].interfaces[dest_int])
+        log.info('Finished writing connections')
 
     def _generate(self):
         """ 
@@ -630,32 +640,30 @@ class Topology(TestbedCreator):
                                                 timeout=self._timeout)
         # get the credentials and proxies that are used so that they can be used 
         # when attempting to other devices on the testbed
-        credential_dict, proxy_set = dev_man.get_credentials_and_proxies(f1)
+        credential_dict, proxy_set = dev_man.get_credentials_and_proxies()
         device_list = {}
 
         while len(testbed.devices) > len(self.visited_devices):
-            dev_man.connect_all_devices(testbed, 
-                                    len(testbed.devices))
-            new_devices = {}
+            dev_man.connect_all_devices(len(testbed.devices))
             #get a dictionary of all currently accessable devices connections
             result = self.process_neigbor_data(testbed, device_list, 
                                                ip_net, dev_man)
             log.info('Connections found in current set of devices: {}'.format(result))
 
             # add any new devices found to test bed
-            self._write_devices_into_testbed(device_list, proxy_set, 
+            new_devices = self._write_devices_into_testbed(device_list, proxy_set, 
                                              credential_dict, testbed)
 
             # add new devices to testbed
             for device in new_devices.values():
-                device.testbed = testbed
+                testbed.add_device(device)
             
             # add the connections that were found to the topology
             self._write_connections_to_testbed(result, testbed)
             
             if self._only_known_devices:
                 break
-
+            log.info('looping to check newly discovered devices')
         # get IP address for interfaces
         for device in testbed.devices.values():
             dev_man.get_interfaces_ipV4_address(device)
@@ -664,6 +672,6 @@ class Topology(TestbedCreator):
         pcall(dev_man.unconfigure_neighbor_discovery_protocols,
               device= testbed.devices.values()
         )
-        self.create_yaml_dict(testbed, f1)
+        self.create_yaml_dict(testbed, f1, dev_man)
         
         return f1
