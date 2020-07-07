@@ -87,7 +87,10 @@ setup(
     keywords = 'genie pyats test automation open source contrib',
 
     entry_points={
-        'pyats.topology.loader': discover_creators()
+        'pyats.topology.loader': discover_creators(),
+        'pyats.easypy.plugins': [
+            'webex = pyats.contrib.plugins.webex:webex_plugin'
+        ]
     },
 
     # package dependencies
