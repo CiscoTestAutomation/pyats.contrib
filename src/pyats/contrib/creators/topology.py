@@ -283,6 +283,8 @@ class Topology(TestbedCreator):
         '''
         fd = testbed.devices[finder_name]
         for conn in fd.connections:
+            if conn == 'defaults':
+                continue
             connection_detail = fd.connections[conn]
             if connection_detail.protocol =='ssh' and 'proxy' in connection_detail:
                 new_proxy = connection_detail.proxy
@@ -354,13 +356,12 @@ class Topology(TestbedCreator):
             device_list[dest_host] = {'ports': {dest_port}, 
                                     'ip':ip_address, 
                                     'os': os,
-                                    'finder': {discover_name}}
+                                    'finder': discover_name}
         else:
             if device_list[dest_host]['os'] is None:
                 device_list[dest_host]['os'] = os
             device_list[dest_host]['ports'].add(dest_port)
             device_list[dest_host]['ip'] = device_list[dest_host]['ip'].union(ip_address)
-            device_list[dest_host]['finder'].add(discover_name)
 
     def add_to_connection_dict(self, connection_dict, 
                                dest_host, dest_port, 
@@ -430,7 +431,7 @@ class Topology(TestbedCreator):
         '''
         log.info('Creating dictionary based on testbed')
         yaml_dict = {'devices':{}, 'topology': {}}
-        credential_dict, _ = dev_man.get_credentials_and_proxies()
+        credential_dict, _ = dev_man.get_credentials_and_proxies(f1)
 
         # write new devices into dict
         for device in testbed.devices.values():
@@ -443,12 +444,15 @@ class Topology(TestbedCreator):
                                                     }
                 conn_dict = yaml_dict['devices'][device.name]['connections']
                 for connect in device.connections:
-                    try:
-                        conn_dict[connect] = {'protocol':device.connections[connect]['protocol'],
-                                              'ip': device.connections[connect]['ip'],
-                                             }
-                    except Exception:
-                        continue
+                    ip = device.connections[connect].get('ip')
+                    protocol = device.connections[connect].get('protocol')
+                    proxy = device.connections[connect].get('proxy')
+                    conn_dict[connect] = {'protocol':protocol,
+                                            'ip': ip,
+                                          'proxy': proxy
+                                         }
+                conn_dict['defaults'] = {'via':'finder_proxy'}
+                    
 
             # write in the interfaces and link from devices into testbed
             interface_dict = {'interfaces': {}}
@@ -498,7 +502,6 @@ class Topology(TestbedCreator):
                 log.info('New device {} found and'
                         ' being added to testbed'.format(new_dev))
                 connections = {}
-
                 # create connections for the ip addresses in the device list
                 for count, ip in enumerate(device_list[new_dev]['ip']):
                     if count == 0:
@@ -511,15 +514,14 @@ class Topology(TestbedCreator):
                             'ip': ip,
                             'proxy': proxy
                             }
-
                     # create connection to device with given ip using a device that found it
+                    finder_proxy = self.write_proxy_chain(
+                                    device_list[new_dev]['finder'], testbed)
                     connections[str(count) + 'finder_proxy'] = {
                             'protocol': 'ssh',
                             'ip': ip,
-                            'proxy': self.write_proxy_chain(
-                                        device_list[new_dev]['finder'], testbed)
+                            'proxy': finder_proxy
                             }
-
                 # create the new device
                 dev = Device(new_dev,
                             os = device_list[new_dev]['os'],
@@ -530,7 +532,6 @@ class Topology(TestbedCreator):
                                         {'order':['os'],
                                         'os': device_list[new_dev]['os']}
                                     })
-
                 # create and add the interfaces for the new device
                 for interface in device_list[new_dev]['ports']:
                     type_name = interface_filter.match(interface)
@@ -640,7 +641,7 @@ class Topology(TestbedCreator):
                                                 timeout=self._timeout)
         # get the credentials and proxies that are used so that they can be used 
         # when attempting to other devices on the testbed
-        credential_dict, proxy_set = dev_man.get_credentials_and_proxies()
+        credential_dict, proxy_set = dev_man.get_credentials_and_proxies(f1)
         device_list = {}
 
         while len(testbed.devices) > len(self.visited_devices):
@@ -660,7 +661,6 @@ class Topology(TestbedCreator):
             
             # add the connections that were found to the topology
             self._write_connections_to_testbed(result, testbed)
-            
             if self._only_known_devices:
                 break
             log.info('looping to check newly discovered devices')

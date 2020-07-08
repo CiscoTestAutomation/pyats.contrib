@@ -73,8 +73,7 @@ class Device_Manager():
                 log.info('Attempting to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                 try:
                     self.testbed.devices[device].connect(via = str(self.alias_dict[device]),
-                                                    connection_timeout = 10,
-                                                    learn_hostname = True)
+                                                    connection_timeout = 10)
                 except:        
                     log.info('Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                     self.testbed.devices[device].destroy()
@@ -88,8 +87,7 @@ class Device_Manager():
             if not self.ssh_only or (self.ssh_only and one_connect.protocol == 'ssh'):                       
                 try:
                     self.testbed.devices[device].connect(via = str(one_connect),
-                                                    connection_timeout = 10,
-                                                    learn_hostname = True)
+                                                    connection_timeout = 10)
                     break
                 except Exception:
                     # if connection fails, erase the connection from connection mgr
@@ -196,7 +194,7 @@ class Device_Manager():
                     ip = ipaddress.IPv4Interface(ip)
                     interface.ipv4 = ip
     
-    def get_credentials_and_proxies(self):
+    def get_credentials_and_proxies(self, yaml):
         '''
         Takes a copy of the current credentials in the testbed for use in 
         connecting to other devices
@@ -207,12 +205,9 @@ class Device_Manager():
             list of proxies used by testbed devices
         '''
         credential_dict = {}
-        proxy_list = set()
-        for device in self.testbed.devices.values():
-
+        proxy_list = []
+        for device in yaml['devices'].values():
             # get all connections used in the testbed
-            if 'credentials' not in device:
-                continue
             for cred in device['credentials']:
                 if cred not in credential_dict :
                     credential_dict[cred] = dict(device['credentials'][cred])
@@ -222,6 +217,6 @@ class Device_Manager():
             # get list of proxies used in connections
             for connect in device['connections'].values():
                 if 'proxy' in connect:
-                    proxy_list.add(connect['proxy'])
-
+                    if connect['proxy'] not in proxy_list:
+                        proxy_list.append(connect['proxy'])
         return credential_dict, proxy_list
