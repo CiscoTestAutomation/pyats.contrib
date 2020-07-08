@@ -100,11 +100,13 @@ class WebExTeamsNotifyPlugin(BasePlugin):
 
         # Format message with info from job run
         msg = MESSAGE_TEMPLATE.format(job=job)
-
+        
+        # internal Cisco pyATS log upload link
+        # (does not exist for external release)
         try:
             # Attempt to get path for TRADe logs
             if not self.runtime.runinfo.no_upload:
-                msg += '\n\nView TRADe logs at: %s'\
+                msg += '\n\nView pyATS logs at: %s'\
                        % self.runtime.runinfo.log_url
         except AttributeError:
             pass
