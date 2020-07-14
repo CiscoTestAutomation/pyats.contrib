@@ -120,6 +120,7 @@ class Topology(TestbedCreator):
     def _process_cdp_information(self, result, entry, device_list, ip_net, 
                                  testbed, connection_dict):
         '''
+            TODO: consider moving to own module for processing data
             Process the cdp parser information and enters it into the 
             connection_dict and the device_list
             Args:
@@ -171,38 +172,38 @@ class Topology(TestbedCreator):
             # get the ip addresses for the neighboring device
             mgmt_address = connection.get('management_addresses')
             ent_address = connection.get('entry_addresses')
-            if mgmt_address is None and ent_address is None:
-                ip_set = set()
-            elif mgmt_address is None and ent_address is not None:
-                ip_set = {ip for ip in ent_address}
-            elif ent_address is None and mgmt_address is not None:
-                ip_set = {ip for ip in mgmt_address}
-            else:
-                ip_set = {ip for ip in mgmt_address}.union({ip for ip in ent_address})
+            ent_set = {ip for ip in ent_address}
+            mgmt_set = {ip for ip in mgmt_address}
 
             # if the ip addresses for the connection are in the range given
             # by the cli, do not log the connection and move on
-                stop = False
-                for ip, net in product(ip_set, ip_net):
-                    if ipaddress.IPv4Address(ip) in net:
-                        log.info('IP {ip} found in' 
-                                'ignored network {net}'.format(ip = ip, net = net))
-                        stop = True
-                        break
-                if stop:
-                    continue
+            stop = False
+            for ip, net in product(ent_set, ip_net):
+                if ipaddress.IPv4Address(ip) in net:
+                    log.info('IP {ip} found in' 
+                            'ignored network {net}'.format(ip = ip, net = net))
+                    stop = True
+                    break
+            for ip, net in product(mgmt_set, ip_net):
+                if ipaddress.IPv4Address(ip) in net:
+                    log.info('IP {ip} found in' 
+                            'ignored network {net}'.format(ip = ip, net = net))
+                    stop = True
+                    break
+            if stop:
+                continue
             os = self.get_os(connection['software_version'], 
                              connection['platform'])
             log.info('dest host = {}, dest port = {}, interface= {}, device = {}'.format(dest_host,dest_port, interface, entry))
             # add the discovered information to 
             # both the connection_dict and the device_list
-            self.add_to_device_list(device_list, dest_host, dest_port, ip_set, 
+            self.add_to_device_list(device_list, dest_host, dest_port, ent_address, mgmt_address, 
                                     os, entry)
-            self.add_to_connection_dict(connection_dict, dest_host, dest_port, 
-                                    ip_set, interface,entry)
+            self.add_to_connection_dict(connection_dict, dest_host, dest_port, interface, entry)
 
     def _process_lldp_information(self, result, entry, device_list, ip_net, testbed, connection_dict):
         '''
+            TODO: consider moving to own module for processing data
             Process the lldp parser information and enters it into the 
             connection_dict and the device_list
             Args:
@@ -269,19 +270,21 @@ class Topology(TestbedCreator):
                 # add the discovered information to both 
                 # the connection_dict and the device_list    
                 self.add_to_device_list(device_list, dest_host, dest_port, 
-                                        {ip_address}, os, entry)
-                self.add_to_connection_dict(connection_dict, dest_host, dest_port, 
-                                        ip_address, interface,entry)
+                                        {}, {ip_address}, os, entry)
+                self.add_to_connection_dict(connection_dict, dest_host, dest_port, interface, entry)
 
-    def write_proxy_chain(self, finder_name, testbed):
+    def write_proxy_chain(self, finder_name, testbed, credentials, ip):
         ''' 
             creates a set of proxies for ssh connections, creating a set of 
             commands if there are mutiple proxies involved
             Args:
                 finder_name = name of device being used as proxy
                 testbed = testbed where device is found
+                credentials = credentials of finder device
+                ip = interface ip used in connection
         '''
         fd = testbed.devices[finder_name]
+        user = credentials['default']['username']
         for conn in fd.connections:
             if conn == 'defaults':
                 continue
@@ -295,12 +298,12 @@ class Topology(TestbedCreator):
         if new_proxy is None:
             return finder_name
         if isinstance(new_proxy, list):
-            new_proxy[-1]['command'] = 'ssh {}'.format(conn_ip)
-            new_proxy.append({'device': finder_name})
+            new_proxy[-1]['command'] = 'ssh {user}@{ip}'.format(user = user, ip = conn_ip)
+            new_proxy.append({'device': finder_name, 'command': 'ssh {user}@{ip}'.format(user = user, ip = ip)})
             return new_proxy
         if isinstance(new_proxy,str):
             proxy_steps = [{'device':new_proxy,'command':'ssh {}'.format(conn_ip)}, 
-                           {'device':finder_name}]
+                           {'device':finder_name, 'command': 'ssh {user}@{ip}'.format(user = user, ip = ip)}]
             return proxy_steps
 
     def get_device_connections(self, data, entry, device_list, ip_net, testbed):
@@ -339,8 +342,9 @@ class Topology(TestbedCreator):
         return connection_dict
 
     def add_to_device_list(self, device_list, dest_host, 
-                           dest_port, ip_address, os, discover_name):
+                           dest_port, ent_address, mgmt_address, os, discover_name):
         '''
+            TODO: consider moving to own module for processing data
             Add the information needed to create the device in the 
             testbed later to the specified list
             Args:
@@ -352,21 +356,22 @@ class Topology(TestbedCreator):
                 os: the os of the device
                 discover_name: the name of the device that discovered dest_host
         '''
+        ent_address.difference_update(mgmt_address)
         if dest_host not in device_list:
             device_list[dest_host] = {'ports': {dest_port}, 
-                                    'ip':ip_address, 
+                                    'ip':mgmt_address, 
                                     'os': os,
-                                    'finder': discover_name}
+                                    'finder': (discover_name, ent_address)}
         else:
             if device_list[dest_host]['os'] is None:
                 device_list[dest_host]['os'] = os
             device_list[dest_host]['ports'].add(dest_port)
-            device_list[dest_host]['ip'] = device_list[dest_host]['ip'].union(ip_address)
+            device_list[dest_host]['ip'] = device_list[dest_host]['ip'].union(mgmt_address)
 
     def add_to_connection_dict(self, connection_dict, 
-                               dest_host, dest_port, 
-                               ip_address,interface, dev):
+                               dest_host, dest_port,interface, dev):
         '''
+            TODO: consider moving to own module for processing data
             Adds the information about a connection to be added to the topology
             recording what device interface combo is connected to the given
             interface and ip address involved in the connection
@@ -379,8 +384,7 @@ class Topology(TestbedCreator):
                 dev: the device involved in the connection
         '''
         new_entry = {'dest_host': dest_host, 
-                    'dest_port': dest_port, 
-                    'ip_address': ip_address}
+                    'dest_port': dest_port}
         if interface not in connection_dict:
             connection_dict[interface] = [new_entry]
         else:
@@ -451,7 +455,6 @@ class Topology(TestbedCreator):
                                             'ip': ip,
                                           'proxy': proxy
                                          }
-                conn_dict['defaults'] = {'via':'finder_proxy'}
                     
 
             # write in the interfaces and link from devices into testbed
@@ -502,12 +505,13 @@ class Topology(TestbedCreator):
                 log.info('New device {} found and'
                         ' being added to testbed'.format(new_dev))
                 connections = {}
+                # get credentials of finder device to use as new device credentials
+                finder = device_list[new_dev]['finder']
+                finder_dev = testbed.devices[finder[0]]
+                credentials = finder_dev.connections
                 # create connections for the ip addresses in the device list
-                for count, ip in enumerate(device_list[new_dev]['ip']):
-                    if count == 0:
-                        count = 'default'
+                for ip in device_list[new_dev]['ip']:
                     for proxy in proxy_set:
-
                         # create connection using possible proxies
                         connections['ssh' + proxy] = {
                             'protocol': 'ssh',
@@ -515,9 +519,10 @@ class Topology(TestbedCreator):
                             'proxy': proxy
                             }
                     # create connection to device with given ip using a device that found it
+                if device_list[new_dev]['finder'][1]:
                     finder_proxy = self.write_proxy_chain(
-                                    device_list[new_dev]['finder'], testbed)
-                    connections[str(count) + 'finder_proxy'] = {
+                                    finder[0], testbed, credentials, finder[[1]])
+                    connections['finder_proxy'] = {
                             'protocol': 'ssh',
                             'ip': ip,
                             'proxy': finder_proxy
@@ -525,7 +530,7 @@ class Topology(TestbedCreator):
                 # create the new device
                 dev = Device(new_dev,
                             os = device_list[new_dev]['os'],
-                            credentials = credential_dict,
+                            credentials = credentials,
                             type = 'device',
                             connections = connections,
                             custom = {'abstraction':
@@ -569,7 +574,7 @@ class Topology(TestbedCreator):
                 connection_dict: Dictionary with connections found earlier
                 testbed: testbed to write connections into
         '''
-        log.info('adding connections to dict')
+        log.info('Adding connections to testbed')
         for device in connection_dict:
             log.info('Writing connections found in {}'.format(device))
             for interface_name in connection_dict[device]:

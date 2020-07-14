@@ -97,6 +97,7 @@ class Device_Manager():
 
     def configure_neighbor_discovery_protocols(self, dev):
         '''
+            TODO: consider taking argument of list of protocols to configure
             If allowed to edit device configuration
             enable cdp and lldp on the device if it is disabled and return
             whether cdp and lldp where configured for the device
@@ -136,6 +137,7 @@ class Device_Manager():
 
     def unconfigure_neighbor_discovery_protocols(self, device):
         '''
+            TODO: consider taking argument of list of protocols to unconfigure
             Unconfigures neighbor discovery protocols on device if they 
             were enabled by the script earlier
             Args:
