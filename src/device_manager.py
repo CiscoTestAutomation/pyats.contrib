@@ -36,7 +36,9 @@ class Device_Manager():
         # Set up a thread pool executor to connect to all devices at the same time    
         with ThreadPoolExecutor(max_workers = limit) as executor:
             for entry in self.testbed.devices:
-                log.info('attempting to connect to {entry}'.format(entry = entry))
+                if self.testbed.devices[entry].connected:
+                    continue
+                log.info('Attempting to connect to {entry}'.format(entry = entry))
                 results[entry] = executor.submit(self._connect_one_device,
                                                 entry)
 
