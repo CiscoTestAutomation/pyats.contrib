@@ -118,7 +118,7 @@ class Device_Manager():
 
         if dev.connected and self.config:
 
-            if not dev.api.verify_cdp_status(max_time= self.timeout, check_interval=5):
+            if not dev.api.verify_cdp_in_state(max_time= self.timeout, check_interval=5):
                 try:
                     dev.api.configure_cdp()
                     cdp = True
@@ -127,7 +127,7 @@ class Device_Manager():
                                 "for {device}".format(device = dev.name), 
                                                     exc_info = True)
 
-            if not dev.api.verify_lldp_status(max_time= self.timeout, check_interval=5):
+            if not dev.api.verify_lldp_in_state(max_time= self.timeout, check_interval=5):
                 try:
                     dev.api.configure_lldp()
                     lldp = True

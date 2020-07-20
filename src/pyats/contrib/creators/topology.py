@@ -9,7 +9,6 @@ from itertools import product
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import device_manager
-import pprint
 from yaml import (YAMLError, safe_load)
 from genie.conf import Genie
 from genie.testbed import load
@@ -99,7 +98,6 @@ class Topology(TestbedCreator):
         # if the device has not been visited add it to the list of devices
         # to get data from and add it to set of devices that have been examined
         for device in testbed.devices:
-            print(self.visited_devices)
             if device not in self.visited_devices:
                 self.visited_devices.add(device)
                 dev_to_test.append(testbed.devices[device])
@@ -174,7 +172,7 @@ class Topology(TestbedCreator):
 
             # get the ip addresses for the neighboring device
             mgmt_address = connection.get('management_addresses')
-            ent_address = connection.get('entry_addresses')
+            ent_address = connection.get('interface_addresses')
             ent_set = {ip for ip in ent_address}
             mgmt_set = {ip for ip in mgmt_address}
 
