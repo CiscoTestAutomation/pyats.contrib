@@ -1,39 +1,65 @@
-from genie.conf.base import Testbed, Device, Interface, Link
 import logging
 import argparse
 import ipaddress
 from concurrent.futures import ThreadPoolExecutor
+from genie.conf.base import Testbed, Device, Interface, Link
+
 
 log = logging.getLogger(__name__)
-    
-supported_os = ['nxos', 'iosxr', 'iosxe', 'ios']
 
-class Device_Manager():
+
+class TestbedManager(object):
+    '''Class designed to handle device interactions for connecting devcices
+       and cdp and lldp
     '''
-        Class designed to handle device interactions for connecting devcices
-        and cdp and lldp
-    '''
-    def __init__(self,testbed, config=False, ssh_only=False, alias_dict={}, timeout=10):
-        self.cdp_configured = set()
-        self.lldp_configured = set()
+    def __init__(self, testbed, config=False, ssh_only=False, alias_dict={},
+                 timeout=10, supported_os):
+
         self.config = config
         self.ssh_only = ssh_only
         self.testbed = testbed
         self.alias_dict = alias_dict
         self.timeout = timeout
+        self.supported_os = supported_os
 
-    def connect_all_devices(self, limit):
+        self.cdp_configured = set()
+        self.lldp_configured = set()
+
+
+    def _connect_all_devices(self, limit):
         '''
-            Creates a ThreadPoolExecutor designed to connect to each device in 
+            Creates a ThreadPoolExecutor designed to connect to each device in
             Args:
                 limit = max number of threads to spawn
-                
+
             Returns:
                 Dictionary of devices containing their connection status
         '''
         results = {}
 
-        # Set up a thread pool executor to connect to all devices at the same time    
+        # Set up a thread pool executor to connect to all devices at the same time
+        with ThreadPoolExecutor(max_workers = limit) as executor:
+            for device_name, device_obj in self.testbed.devices.items():
+                # If already connected skip - TODO Edmond - Already visited
+                if device_obj.connected or device_obj.os not in self.supported_os:
+                    continue
+
+                log.info('Attempting to connect to {device}'.format(device=device))
+                results[entry] = executor.submit(self._connect_one_device,
+                                                entry)
+
+    def connect_all_devices(self, limit):
+        '''
+            Creates a ThreadPoolExecutor designed to connect to each device in
+            Args:
+                limit = max number of threads to spawn
+
+            Returns:
+                Dictionary of devices containing their connection status
+        '''
+        results = {}
+
+        # Set up a thread pool executor to connect to all devices at the same time
         with ThreadPoolExecutor(max_workers = limit) as executor:
             for entry in self.testbed.devices:
                 if self.testbed.devices[entry].connected:
@@ -61,11 +87,6 @@ class Device_Manager():
             Returns:
                 [bool cdp_configured, bool lldp_configured]
         '''
-        # if the device has a supported os try to connect through each of 
-        # the connections it has. If the device is not connected just return
-        # that cdp and lldp were not configured
-        if self.testbed.devices[device].os not in supported_os:
-            return [False, False]
 
         # if there is a prefered alias for the device, attempt to connect with device
         # using that alias, if the attmept fails or the alias doesn't exist, it will
@@ -76,7 +97,7 @@ class Device_Manager():
                 try:
                     self.testbed.devices[device].connect(via = str(self.alias_dict[device]),
                                                     connection_timeout = 10)
-                except:        
+                except:
                     log.info('Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                     self.testbed.devices[device].destroy()
             else:
@@ -86,7 +107,7 @@ class Device_Manager():
             return self.configure_neighbor_discovery_protocols(self.testbed.devices[device])
 
         for one_connect in self.testbed.devices[device].connections:
-            if not self.ssh_only or (self.ssh_only and one_connect.protocol == 'ssh'):                       
+            if not self.ssh_only or (self.ssh_only and one_connect.protocol == 'ssh'):
                 try:
                     self.testbed.devices[device].connect(via = str(one_connect),
                                                     connection_timeout = 10)
@@ -113,7 +134,7 @@ class Device_Manager():
         lldp = False
 
         if not dev.connected:
-            log.info('Device {} is not connected skipping' 
+            log.info('Device {} is not connected skipping'
                         ' cdp/lldp configuration'.format(dev.name))
 
         if dev.connected and self.config:
@@ -123,8 +144,8 @@ class Device_Manager():
                     dev.api.configure_cdp()
                     cdp = True
                 except Exception:
-                    log.error("Exception configuring cdp " 
-                                "for {device}".format(device = dev.name), 
+                    log.error("Exception configuring cdp "
+                                "for {device}".format(device = dev.name),
                                                     exc_info = True)
 
             if not dev.api.verify_lldp_in_state(max_time= self.timeout, check_interval=5):
@@ -132,15 +153,15 @@ class Device_Manager():
                     dev.api.configure_lldp()
                     lldp = True
                 except Exception:
-                    log.error("Exception configuring cdp" 
-                                " for {device}".format(device = dev.name), 
-                                                        exc_info = True)    
+                    log.error("Exception configuring cdp"
+                                " for {device}".format(device = dev.name),
+                                                        exc_info = True)
         return [cdp, lldp]
 
     def unconfigure_neighbor_discovery_protocols(self, device):
         '''
             TODO: consider taking argument of list of protocols to unconfigure
-            Unconfigures neighbor discovery protocols on device if they 
+            Unconfigures neighbor discovery protocols on device if they
             were enabled by the script earlier
             Args:
                 device: device to unconfigure protocols on
@@ -161,7 +182,7 @@ class Device_Manager():
                 device.api.unconfigure_lldp()
             except Exception as e:
                 log.error('Error unconfiguring lldp on device {}: {}'.format(device.name, e))
-    
+
     def get_neighbor_info(self, device):
         '''
         Method designed to be used with pcall, gets the devices cdp and lldp
@@ -171,7 +192,7 @@ class Device_Manager():
         '''
         cdp = {}
         lldp = {}
-        if device.os not in supported_os or not device.connected:
+        if device.os not in self.supported_os or not device.connected:
             return {device.name: {'cdp':cdp, 'lldp':lldp}}
         try:
             cdp = device.api.get_cdp_neighbors_info()
@@ -182,14 +203,14 @@ class Device_Manager():
         except Exception:
             log.error("Exception occurred getting lldp info", exc_info = True)
         return {device.name: {'cdp':cdp, 'lldp':lldp}}
-    
+
     def get_interfaces_ipV4_address(self, device):
         '''
         get the ip address for all of the generated interfaces on the give device
         Args:
             device: device to get interface ip addresss for
         '''
-        if not device.connected or device.os not in supported_os or len(device.interfaces) < 1:
+        if not device.connected or device.os not in self.supported_os or len(device.interfaces) < 1:
             return
         for interface in device.interfaces.values():
             if interface.ipv4 is None:
@@ -197,10 +218,10 @@ class Device_Manager():
                 if ip:
                     ip = ipaddress.IPv4Interface(ip)
                     interface.ipv4 = ip
-    
+
     def get_credentials_and_proxies(self, yaml):
         '''
-        Takes a copy of the current credentials in the testbed for use in 
+        Takes a copy of the current credentials in the testbed for use in
         connecting to other devices
         Args:
             testbed: testbed to collect credentails and proxies for
