@@ -13,18 +13,17 @@ class TestbedManager(object):
        and cdp and lldp
     '''
     def __init__(self, testbed, config=False, ssh_only=False, alias_dict={},
-                 timeout=10, supported_os = ['nxos','iosxe', 'iosxr', 'ios']):
+                 timeout=10, supported_os):
 
         self.config = config
         self.ssh_only = ssh_only
         self.testbed = testbed
         self.alias_dict = alias_dict
         self.timeout = timeout
-        self.supported_os = supported_os
         self.cdp_configured = set()
         self.lldp_configured = set()
         self.visited_devices = set()
-
+        self.supported_os = supported_os
 
     def connect_all_devices(self, limit):
         '''Creates a ThreadPoolExecutor designed to connect to each device in
@@ -33,13 +32,13 @@ class TestbedManager(object):
             limit = max number of threads to spawn
 
         Returns:
-            Dictionary of devices containing their connection status
+            None
         '''
 
         # Set up a thread pool executor to connect to all devices at the same time
         with ThreadPoolExecutor(max_workers = limit) as executor:
             for device_name, device_obj in self.testbed.devices.items():
-                # If already connected or device has already been visited skip 
+                # If already connected or device has already been visited skip
                 if device_obj.connected or device_obj.os not in self.supported_os or device_name in self.visited_devices:
                     continue
                 log.info('Attempting to connect to {device}'.format(device=device_name))
@@ -55,23 +54,24 @@ class TestbedManager(object):
         '''
 
         # if there is a prefered alias for the device, attempt to connect with device
-        # using that alias, if the attmept fails or the alias doesn't exist, it will
-        # attempt to connect normally
+        # using that alias, if the attempt fails or the alias doesn't exist, it will
+        # attempt to connect with the default
         if device in self.alias_dict:
             if self.alias_dict[device] in self.testbed.devices[device].connections:
                 log.info('Attempting to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                 try:
                     self.testbed.devices[device].connect(via = str(self.alias_dict[device]),
-                                                    connection_timeout = 10)
+                                                    connection_timeout = self.timeout)
                 except:
                     log.info('Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                     self.testbed.devices[device].destroy()
+                else:
+                    # No exception raised - get out
+                    return
             else:
                 log.info('Device {} does not have a connection with alias {}'.format(device, self.alias_dict[device]))
 
-        if self.testbed.devices[device].connected:
-            return
-
+        # Use default - Go through all connection on the device
         for one_connect in self.testbed.devices[device].connections:
             if not self.ssh_only or (self.ssh_only and one_connect.protocol == 'ssh'):
                 try:
@@ -81,45 +81,60 @@ class TestbedManager(object):
                 except Exception:
                     # if connection fails, erase the connection from connection mgr
                     self.testbed.devices[device].destroy()
+            # TODO - Edmond - fix the logic for above
 
     def configure_testbed_cdp_protocol(self):
         ''' Method checks if cdp configuration is necessary for all devices in
         the testbed and if needed calls the cdp configuration method for the
         target devices in parallel
         '''
+
+        # Check which device to configure CDP on
         device_to_configure = []
         for device_name, device_obj in self.testbed.devices.items():
             if device_name in self.visited_devices or device_name in self.cdp_configured or not device_obj.connected:
                 continue
             device_to_configure.append(device_obj)
+
+        # No device to configure
         if not device_to_configure:
             return
+
+        # Configure cdp on these device
         pcall(self.configure_device_cdp_protocol,
-              device= device_to_configure)
-        
-            
+              device=device_to_configure)
+
+
     def configure_device_cdp_protocol(self, device):
-        '''If allowed to edit device configuration enable cdp on the device 
-        if it is disabled and then marks that configuration was done
+        '''If allowed to edit device configuration enable cdp on the device
+        Once done - Then add it to the cdp_configured list
 
         Args:
             device: the device having cdp enabled
         '''
-        if not device.api.verify_cdp_in_state(max_time= self.timeout, check_interval=5):
-            try:
-                device.api.configure_cdp()
-                self.cdp_configured.add(device.name)
-            except Exception:
-                log.error("Exception configuring cdp "
-                            "for {device}".format(device = device.name),
-                                                exc_info = True)
-            
-    
+
+        # Check if it is already enabled 
+        if device.api.verify_cdp_in_state(max_time=self.timeout, check_interval=5):
+            # Already configured - Get out
+            return
+
+        # Configure it
+        try:
+            device.api.configure_cdp()
+        except Exception:
+            log.error("Exception configuring cdp "
+                        "for {device}".format(device = device.name),
+                                            exc_info = True)
+        else:
+            self.cdp_configured.add(device.name)
+
+
     def configure_testbed_lldp_protocol(self):
         ''' Method checks if lldp configuration is necessary for all devices in
         the testbed and if needed calls the cdp configuration method for the
         target devices in parallel
         '''
+        # Format same as cdp
         device_to_configure = []
         for device_name, device_obj in self.testbed.devices.items():
             if device_name in self.visited_devices or device_name in self.lldp_configured or not device_obj.connected:
@@ -129,10 +144,9 @@ class TestbedManager(object):
             return
         pcall(self.configure_device_lldp_protocol,
               device= device_to_configure)
-        
-            
+
     def configure_device_lldp_protocol(self, device):
-        '''If allowed to edit device configuration enable lldp on the device 
+        '''If allowed to edit device configuration enable lldp on the device
         if it is disabled and and then marks that configuration was done
 
         Args:
@@ -146,7 +160,7 @@ class TestbedManager(object):
                 log.error("Exception configuring cdp "
                             "for {device}".format(device = device.name),
                                                 exc_info = True)
-            
+
 
     def unconfigure_neighbor_discovery_protocols(self, device):
         '''Unconfigures neighbor discovery protocols on device if they

@@ -22,7 +22,7 @@ from .creator import TestbedCreator
 
 log = logging.getLogger(__name__)
 
-supported_os = ['nxos', 'iosxr', 'iosxe', 'ios']
+SUPPORTED_OS = ['nxos', 'iosxr', 'iosxe', 'ios']
 
 
 class Topology(TestbedCreator):
@@ -132,22 +132,26 @@ class Topology(TestbedCreator):
                                                  ssh_only=self._ssh_only,
                                                  alias_dict=self.alias_dict,
                                                  timeout=self._timeout,
-                                                 supported_os=supported_os)
+                                                 supported_os=SUPPORTED_OS)
 
-        # get the credentials and proxies that are used so that they can be used
-        # when attempting to other devices on the testbed
+        # Get the credential for the device from the yaml - so can recreate the
+        # yaml with those
         credential_dict, proxy_set = dev_man.get_credentials_and_proxies(testbed_yaml)
         device_list = {}
 
         while len(testbed.devices) > len(dev_man.visited_devices):
-            # connect to unvisited devices and configure cdp/lldp if needed
+            # connect to unvisited devices
             dev_man.connect_all_devices(len(testbed.devices))
-            if dev_man.config:
+
+            # Configure these connected devices
+            if dev_man._config_discovery:
                 dev_man.configure_testbed_cdp_protocol()
                 dev_man.configure_testbed_lldp_protocol()
-            # get a dictionary of all currently accessable devices connections
+
+            # Get the cdp/lldp operation data and massage it into our structure format
             result = self.process_neigbor_data(testbed, device_list,
                                                exclude_networks, dev_man)
+
             log.info('Connections found in current set of devices: {}'.format(result))
             # add any new devices found to test bed
             new_devices = self._write_devices_into_testbed(device_list, proxy_set,
