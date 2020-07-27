@@ -191,7 +191,7 @@ class Topology(TestbedCreator):
 
         Returns:
             {device:{interface with connection:{'dest_host': destination device,
-                                                'dest_port': destination device port}}
+                                                'dest_port': destination device port}}}
         '''
         conn_dict = {}
 
@@ -227,7 +227,7 @@ class Topology(TestbedCreator):
             devices
         '''
         device_connections = {}
-        interface_filter = re.compile(r'.+?(?=\d)')
+        #interface_filter = re.compile(r'.+?(?=\d)')
 
         # parse cdp information
         result = data.get('cdp', [])
@@ -245,18 +245,17 @@ class Topology(TestbedCreator):
 
         # add interfaces used in the connections of the device
         # TODO MAKE THIS UNECESSARY
-        for interface in device_connections:
-            if interface not in testbed.devices[device_name].interfaces:
-                type_name = interface_filter.match(interface)
-                interface_a = Interface(interface,
-                                        type = type_name[0].lower())
-                interface_a.device = testbed.devices[device_name]
-        return device_connections
+        # for interface in device_connections:
+        #     if interface not in testbed.devices[device_name].interfaces:
+        #         type_name = interface_filter.match(interface)
+        #         interface_a = Interface(interface,
+        #                                 type = type_name[0].lower())
+        #         interface_a.device = testbed.devices[device_name]
+        # return device_connections
 
     def _process_cdp_information(self, result, device_name, device_list, exclude_networks ,
                                  testbed, device_connections):
-        '''TODO: consider moving to own module for processing data
-        Process the cdp parser information and enters it into the
+        '''Process the cdp parser information and enters it into the
         device_connections and the device_list
 
         Args:
@@ -336,14 +335,13 @@ class Topology(TestbedCreator):
                              connection['platform'])
             log.info('dest host = {}, dest port = {}, interface= {}, device = {}'.format(dest_host,dest_port, interface, device_name))
 
-            # Add the connection information to the device_connections and destination device information to  the device_list
+            # Add the connection information to the device_connections and destination device information to the device_list
             self.add_to_device_list(device_list, dest_host, dest_port, int_set, mgmt_set,
-                                    os, device_name)
+                                    os, device_name, interface)
             self.add_to_device_connections(device_connections, dest_host, dest_port, interface, device_name)
 
     def _process_lldp_information(self, result, device_name, device_list, exclude_networks , testbed, device_connections):
-        '''TODO: consider moving to own module for processing data
-        Process the lldp parser information and enters it into the
+        '''Process the lldp parser information and enters it into the
         device_connections and the device_list
 
         Args:
@@ -411,18 +409,15 @@ class Topology(TestbedCreator):
                 
                 # get the name of the operating system of the destination device
                 os = self.get_os(neighbor['system_description'], '')
-                
-                log.info('dest host = {}, dest port = {}, interface= {}, device = {}'.format(dest_host,dest_port, interface, device_name))
 
                 # Add the connection information to the device_connections and destination device information to the device_list
                 self.add_to_device_list(device_list, dest_host, dest_port,
-                                        set(), {ip_address}, os, device_name)
+                                        set(), {ip_address}, os, device_name, interface)
                 self.add_to_device_connections(device_connections, dest_host, dest_port, interface, device_name)
 
     def add_to_device_list(self, device_list, dest_host,
-                           dest_port, int_address, mgmt_address, os, discover_name):
-        '''TODO: consider moving to own module for processing data
-        TODO: add host device interface info as well
+                           dest_port, int_address, mgmt_address, os, discover_name, interface):
+        '''TEST: add host device interface info as well 
         Add the information needed to create the device in the
         testbed later to the specified list
         Args:
@@ -430,8 +425,8 @@ class Topology(TestbedCreator):
                             connect and their existing interfaces
             dest_host: device being added to the list
             dest_port: interface of device to be added
-            int_address: ip address found under int ip header for device
-            mgmt_address: ip address found under mgmt ip header for device
+            int_address: set of ip addresses found under int ip header for device
+            mgmt_address: set of ip addresses found under mgmt ip header for device
             os: the os of the device
             discover_name: the name of the device that discovered dest_host
         '''
@@ -445,20 +440,29 @@ class Topology(TestbedCreator):
             device_list[dest_host] = {'ports': {dest_port},
                                     'ip':mgmt_address,
                                     'os': os,
-                                    'finder': (discover_name, int_address)}
+                                    'finder': (discover_name, int_address),
+                                    'new_device': True}
         
         # if the device already exists in the device list, add the new interfaces
         # and ip addresses to the list
         else:
+            device_list[dest_host]['ports'].add(dest_port)
+            if not device_list[dest_host]['new_device']:
+                return
             if device_list[dest_host]['os'] is None:
                 device_list[dest_host]['os'] = os
-            device_list[dest_host]['ports'].add(dest_port)
             device_list[dest_host]['ip'] = device_list[dest_host]['ip'].union(mgmt_address)
+        
+        # add new interfaces for discovering device
+        if discover_name not in device_list:
+            device_list[discover_name] = {'ports' : {interface},
+                                          'new_device': False}
+        else:
+            device_list[dest_host]['ports'].add(interface)
 
     def add_to_device_connections(self, device_connections,
                                dest_host, dest_port,interface, dev):
-        '''TODO: consider moving to own module for processing data
-        Adds the information about a connection to be added to the topology
+        '''Adds the information about a connection to be added to the topology
         recording what device interface combo is connected to the given
         interface and ip address involved in the connection
         
@@ -519,6 +523,119 @@ class Topology(TestbedCreator):
         if 'NX-OS' in system_string or 'NX-OS' in platform_name:
             return 'nxos'
 
+    
+
+    def _write_devices_into_testbed(self, device_list, proxy_set, credential_dict, testbed):
+        ''' Writes any new devices found in the device list into the testbed
+        and adds any missing interfaces into devices that are missing it
+
+        Args:
+            device_list: list of devices and attached interfaces to add to testbed
+            proxy_set: list of proxies used by other devices in testbed
+            credential_dict: Dictionary of credentials used by other devices in testbed
+            testbed: testbed to add devices too
+
+        Returns:
+            Dictionary of new device objects to add to testbed
+        '''
+        # filter to strip out the numbers from an interface to create a type name
+        # example: ethernet0/3 becomes ethernet
+        interface_filter = re.compile(r'.+?(?=\d)')
+
+        for device_name in device_list:
+            # if the device is not in the testbed
+            if device_name not in testbed.devices:
+                log.info('New device {} found and'
+                         ' being added to testbed'.format(device_name))
+                new_dev = self.create_new_device(testbed, device_list[device_name], proxy_set, device_name)
+                testbed.add_device(new_dev)
+                device_list[device_name]['new_device'] = False
+                continue
+
+            # if the device is already in the testbed, check if the interface exists or not
+            if not self._add_unconnected_interfaces:
+                for interface in device_list[device_name]['ports']:
+
+                    #if interface does not exist add it to the testbed
+                    if interface not in testbed.devices[device_name].interfaces:
+                        type_name = interface_filter.match(interface)
+                        interface_a = Interface(interface,
+                                                type=type_name[0].lower())
+                        interface_a.device = testbed.devices[device_name]
+                continue
+
+            # get all interfaces and add them to testbed
+            interface_list = testbed.devices[device_name].parse('show interfaces description')
+            for interface in interface_list['interfaces']:
+                if interface not in testbed.devices[device_name].interfaces:
+                    type_name = interface_filter.match(interface)
+                    interface_a = Interface(interface,
+                                            type=type_name[0].lower())
+                    interface_a.device = testbed.devices[device_name]
+
+    def create_new_device(self, testbed, device_data, proxy_set, device_name):
+        '''Create a new device object based on given data to add to testbed
+
+        Args:
+            testbed: testbed that new device will be added to
+            device_data: information about device to be created
+            proxy_set: set of proxies used by other devices in testbed
+            device_name: name of device that is being created
+
+        Returns:
+            new device object to be added to testbed
+        '''
+        # filter to strip out the numbers from an interface to create a type name
+        # example: ethernet0/3 becomes ethernet
+        interface_filter = re.compile(r'.+?(?=\d)')
+
+        connections = {}
+        # get credentials of finder device to use as new device credentials
+        finder = device_data['finder']
+        finder_dev = testbed.devices[finder[0]]
+        credentials = finder_dev.credentials
+
+        # create connections for the managment addresses in the device list
+        for ip in device_data['ip']:
+            for proxy in proxy_set:
+                # create connection using possible proxies
+                connections['ssh' + proxy] = {
+                    'protocol': 'ssh',
+                    'ip': ip,
+                    'proxy': proxy
+                    }
+
+        # if there is an interface ip, create a proxy connection
+        # using the discovery device
+        if device_data['finder'][1]:
+            for ip in device_data['finder'][1]:
+                finder_proxy = self.write_proxy_chain(
+                                finder[0], testbed, credentials, ip)
+                connections['finder_proxy'] = {
+                        'protocol': 'ssh',
+                        'ip': ip,
+                        'proxy': finder_proxy
+                        }
+                    
+        # create the new device
+        dev_obj = Device(device_name,
+                    os=device_data['os'],
+                    credentials=credentials,
+                    type='device',
+                    connections=connections,
+                    custom={'abstraction':
+                                {'order':['os'],
+                                'os': device_data['os']}
+                            })
+
+        # create and add the interfaces for the new device
+        for interface in device_data['ports']:
+            type_name = interface_filter.match(interface)
+            interface_a = Interface(interface,
+                                    type=type_name[0].lower())
+            interface_a.device = dev_obj
+        return dev_obj
+
     def write_proxy_chain(self, finder_name, testbed, credentials, ip):
         '''creates a set of proxies for ssh connections, creating a set of
         commands if there are mutiple proxies involved
@@ -564,115 +681,7 @@ class Topology(TestbedCreator):
         if isinstance(new_proxy,str):
             proxy_steps = [{'device':new_proxy,'command':'ssh {}'.format(conn_ip)},
                            {'device':finder_name, 'command': 'ssh {user}@{ip}'.format(user=user, ip=ip)}]
-            return proxy_steps
-
-    def _write_devices_into_testbed(self, device_list, proxy_set, credential_dict, testbed):
-        ''' Writes any new devices found in the device list into the testbed
-        and adds any missing interfaces into devices that are missing it
-        TO DO: add option to create telnet connections
-
-        Args:
-            device_list: list of devices and attached interfaces to add to testbed
-            proxy_set: list of proxies used by other devices in testbed
-            credential_dict: Dictionary of credentials used by other devices in testbed
-            testbed: testbed to add devices too
-
-        Returns:
-            Dictionary of new device objects to add to testbed
-        '''
-        # filter to strip out the numbers from an interface to create a type name
-        # example: ethernet0/3 becomes ethernet
-        interface_filter = re.compile(r'.+?(?=\d)')
-
-        for device in device_list:
-            # if the device is not in the testbed
-            if device not in testbed.devices:
-                log.info('New device {} found and'
-                         ' being added to testbed'.format(device))
-                new_dev = self.create_new_device(testbed, device_list[device], proxy_set, device)
-                testbed.add_device(new_dev)
-                continue
-
-            # if the device is already in the testbed, check if the interface exists or not
-            if not self._add_unconnected_interfaces:
-                for interface in device_list[device]['ports']:
-                    if interface not in testbed.devices[device].interfaces:
-                        type_name = interface_filter.match(interface)
-                        interface_a = Interface(interface,
-                                                type=type_name[0].lower())
-                        interface_a.device = testbed.devices[device]
-            else:
-                interface_list = testbed.devices[device].parse('show interfaces description')
-                for interface in interface_list['interfaces']:
-                    if interface not in testbed.devices[device].interfaces:
-                        type_name = interface_filter.match(interface)
-                        interface_a = Interface(interface,
-                                                type=type_name[0].lower())
-                        interface_a.device = testbed.devices[device]
-
-    def create_new_device(self, testbed, device_data, proxy_set, device):
-        '''Create a new device object based on given data to add to testbed
-
-        Args:
-            testbed: testbed that new device will be added to
-            device_data: information about device to be created
-            proxy_set: 
-            device
-
-        Returns:
-            new device object to be added to testbed
-        '''
-        # filter to strip out the numbers from an interface to create a type name
-        # example: ethernet0/3 becomes ethernet
-        interface_filter = re.compile(r'.+?(?=\d)')
-
-        connections = {}
-        # get credentials of finder device to use as new device credentials
-        finder = device_data['finder']
-        finder_dev = testbed.devices[finder[0]]
-        credentials = finder_dev.credentials
-
-        # create connections for the managment addresses in the device list
-        for ip in device_data['ip']:
-            for proxy in proxy_set:
-                # create connection using possible proxies
-                connections['ssh' + proxy] = {
-                    'protocol': 'ssh',
-                    'ip': ip,
-                    'proxy': proxy
-                    }
-
-        # if there is an interface ip, create a proxy connection
-        # using the discovery device
-        if device_data['finder'][1]:
-            for ip in device_data['finder'][1]:
-                finder_proxy = self.write_proxy_chain(
-                                finder[0], testbed, credentials, ip)
-                connections['finder_proxy'] = {
-                        'protocol': 'ssh',
-                        'ip': ip,
-                        'proxy': finder_proxy
-                        }
-                    
-        # create the new device
-        dev_obj = Device(device,
-                    os=device_data['os'],
-                    credentials=credentials,
-                    type='device',
-                    connections=connections,
-                    custom={'abstraction':
-                                {'order':['os'],
-                                'os': device_data['os']}
-                            })
-
-        # create and add the interfaces for the new device
-        for interface in device_data['ports']:
-            type_name = interface_filter.match(interface)
-            interface_a = Interface(interface,
-                                    type=type_name[0].lower())
-            interface_a.device = dev_obj
-        return dev_obj
-        
+            return proxy_steps        
 
     def _write_connections_to_testbed(self, connection_dict, testbed):
         '''Writes the connections found in the connection_dict into the testbed
