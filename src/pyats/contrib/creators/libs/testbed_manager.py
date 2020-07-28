@@ -66,6 +66,7 @@ class TestbedManager(object):
                     log.info('Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                     self.testbed.devices[device].destroy()
                 else:
+                    
                     # No exception raised - get out
                     return
             else:
@@ -73,15 +74,20 @@ class TestbedManager(object):
 
         # Use default - Go through all connection on the device
         for one_connect in self.testbed.devices[device].connections:
+            # if ssh_only is not enabled try to connect through all connections
             if not self.ssh_only:
                 try:
                     self.testbed.devices[device].connect(via = str(one_connect),
                                                     connection_timeout=self.timeout)
                     break
                 except Exception:
+
                     # if connection fails, erase the connection from connection mgr
                     self.testbed.devices[device].destroy()
-            elif one_connect.protocol == 'ssh':
+                continue
+
+            # if ssh only is enabled, check if the connection protocol is ssh before trying to connect
+            if self.testbed.devices[device].connections[one_connect].get('protocol', '') == 'ssh':
                 try:
                     self.testbed.devices[device].connect(via=str(one_connect),
                                                     connection_timeout=self.timeout)
@@ -89,6 +95,7 @@ class TestbedManager(object):
                 except Exception:
                     # if connection fails, erase the connection from connection mgr
                     self.testbed.devices[device].destroy()
+                
 
     def configure_testbed_cdp_protocol(self):
         ''' Method checks if cdp configuration is necessary for all devices in
@@ -238,11 +245,13 @@ class TestbedManager(object):
         lldp = {}
         if device.os not in self.supported_os or not device.connected:
             return {device.name: {'cdp':cdp, 'lldp':lldp}}
+
         # get the devices cdp neighbor information
         try:
             cdp = device.api.get_cdp_neighbors_info()
         except Exception:
             log.error("Exception occurred getting cdp info", exc_info=True)
+
         # get the devices lldp neighbor information
         try:
             lldp = device.api.get_lldp_neighbors_info()
@@ -256,6 +265,7 @@ class TestbedManager(object):
         Args:
             device: device to get interface ip addresss for
         '''
+
         # if the device isn't connected or the device doesn't have any interfaces to get ip address for
         if not device.connected or device.os not in self.supported_os or len(device.interfaces) < 1:
             return
@@ -280,6 +290,7 @@ class TestbedManager(object):
         credential_dict = {}
         proxy_list = []
         for device in yaml['devices'].values():
+            
             # get all connections used in the testbed
             for cred in device['credentials']:
                 if cred not in credential_dict :
@@ -292,4 +303,5 @@ class TestbedManager(object):
                 if 'proxy' in connect:
                     if connect['proxy'] not in proxy_list:
                         proxy_list.append(connect['proxy'])
+
         return credential_dict, proxy_list

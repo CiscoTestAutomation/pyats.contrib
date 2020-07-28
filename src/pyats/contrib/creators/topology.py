@@ -110,7 +110,7 @@ class Topology(TestbedCreator):
             try:
                 testbed_yaml = safe_load(stream)
             except YAMLError as exc:
-                log.error('error opening yaml file: {}'.format(exc))
+                raise exc('Error Loading Yaml file {}'.format(self._testbed_file))
         # Standardizing exclude networks
         exclude_networks = []
         for network in self._exclude_network.split():
@@ -173,7 +173,6 @@ class Topology(TestbedCreator):
         )
 
         # add the new information into testbed_yaml
-        log.info('Creating dictionary based on testbed')
         final_yaml = self.create_yaml_dict(testbed, testbed_yaml, credential_dict)
 
         # return final topology
@@ -227,7 +226,6 @@ class Topology(TestbedCreator):
             devices
         '''
         device_connections = {}
-        #interface_filter = re.compile(r'.+?(?=\d)')
 
         # parse cdp information
         result = data.get('cdp', [])
@@ -243,15 +241,7 @@ class Topology(TestbedCreator):
             self._process_lldp_information(result, device_name, device_list,
                                            exclude_networks , testbed, device_connections)
 
-        # add interfaces used in the connections of the device
-        # TODO MAKE THIS UNECESSARY
-        # for interface in device_connections:
-        #     if interface not in testbed.devices[device_name].interfaces:
-        #         type_name = interface_filter.match(interface)
-        #         interface_a = Interface(interface,
-        #                                 type = type_name[0].lower())
-        #         interface_a.device = testbed.devices[device_name]
-        # return device_connections
+        return device_connections
 
     def _process_cdp_information(self, result, device_name, device_list, exclude_networks ,
                                  testbed, device_connections):
@@ -317,13 +307,13 @@ class Topology(TestbedCreator):
             for ip, net in product(int_set, exclude_networks ):
                 if ipaddress.IPv4Address(ip) in net:
                     log.info('IP {ip} found in'
-                            'ignored network {net}'.format(ip=ip, net=net))
+                            'exclude network {net}'.format(ip=ip, net=net))
                     stop = True
                     break
             for ip, net in product(mgmt_set, exclude_networks ):
                 if ipaddress.IPv4Address(ip) in net:
                     log.info('IP {ip} found in'
-                            'ignored network {net}'.format(ip=ip, net=net))
+                            'exclude network {net}'.format(ip=ip, net=net))
                     stop = True
                     break
             if stop:
@@ -337,7 +327,7 @@ class Topology(TestbedCreator):
 
             # Add the connection information to the device_connections and destination device information to the device_list
             self.add_to_device_list(device_list, dest_host, dest_port, int_set, mgmt_set,
-                                    os, device_name, interface)
+                                    os, device_name)
             self.add_to_device_connections(device_connections, dest_host, dest_port, interface, device_name)
 
     def _process_lldp_information(self, result, device_name, device_list, exclude_networks , testbed, device_connections):
@@ -378,12 +368,12 @@ class Topology(TestbedCreator):
                 # skip the connection and begin checking the next connection
                 if interface in self._exclude_interfaces:
                     log.info('connection interface {} is found in '
-                            'ignore interface list,'
+                            'exclude interface list,'
                             ' skipping connection'.format(interface))
                     continue
                 if dest_port in self._exclude_interfaces:
                     log.info('destination interface {} is found in '
-                            'ignore interface list,'
+                            'exclude interface list,'
                             ' skipping connection'.format(dest_port))
                     continue
 
@@ -399,7 +389,7 @@ class Topology(TestbedCreator):
                     stop = False
                     for net in exclude_networks :
                         if ipaddress.IPv4Address(ip_address) in net:
-                            log.info('IP {ip} found in ignored '
+                            log.info('IP {ip} found in exclude '
                                         'network {net}'.format(ip=ip_address,
                                                             net=net))
                             stop = True
@@ -412,13 +402,12 @@ class Topology(TestbedCreator):
 
                 # Add the connection information to the device_connections and destination device information to the device_list
                 self.add_to_device_list(device_list, dest_host, dest_port,
-                                        set(), {ip_address}, os, device_name, interface)
+                                        set(), {ip_address}, os, device_name)
                 self.add_to_device_connections(device_connections, dest_host, dest_port, interface, device_name)
 
     def add_to_device_list(self, device_list, dest_host,
-                           dest_port, int_address, mgmt_address, os, discover_name, interface):
-        '''TEST: add host device interface info as well 
-        Add the information needed to create the device in the
+                           dest_port, int_address, mgmt_address, os, discover_name):
+        '''Add the information needed to create the device in the
         testbed later to the specified list
         Args:
             device_list: list of device with information about how to
@@ -440,25 +429,16 @@ class Topology(TestbedCreator):
             device_list[dest_host] = {'ports': {dest_port},
                                     'ip':mgmt_address,
                                     'os': os,
-                                    'finder': (discover_name, int_address),
-                                    'new_device': True}
+                                    'finder': (discover_name, int_address)}
         
         # if the device already exists in the device list, add the new interfaces
         # and ip addresses to the list
         else:
             device_list[dest_host]['ports'].add(dest_port)
-            if not device_list[dest_host]['new_device']:
-                return
             if device_list[dest_host]['os'] is None:
                 device_list[dest_host]['os'] = os
             device_list[dest_host]['ip'] = device_list[dest_host]['ip'].union(mgmt_address)
         
-        # add new interfaces for discovering device
-        if discover_name not in device_list:
-            device_list[discover_name] = {'ports' : {interface},
-                                          'new_device': False}
-        else:
-            device_list[dest_host]['ports'].add(interface)
 
     def add_to_device_connections(self, device_connections,
                                dest_host, dest_port,interface, dev):
@@ -508,7 +488,7 @@ class Topology(TestbedCreator):
         cdp and show lldp neighbor parsers
 
         Args:
-            system_string: posible location for os name
+            system_string: possible location for os name
             platform_name: possible location for os name
         Return:
             returns os or None
@@ -522,8 +502,6 @@ class Topology(TestbedCreator):
                 return 'ios'
         if 'NX-OS' in system_string or 'NX-OS' in platform_name:
             return 'nxos'
-
-    
 
     def _write_devices_into_testbed(self, device_list, proxy_set, credential_dict, testbed):
         ''' Writes any new devices found in the device list into the testbed
@@ -541,7 +519,6 @@ class Topology(TestbedCreator):
         # filter to strip out the numbers from an interface to create a type name
         # example: ethernet0/3 becomes ethernet
         interface_filter = re.compile(r'.+?(?=\d)')
-
         for device_name in device_list:
             # if the device is not in the testbed
             if device_name not in testbed.devices:
@@ -549,29 +526,31 @@ class Topology(TestbedCreator):
                          ' being added to testbed'.format(device_name))
                 new_dev = self.create_new_device(testbed, device_list[device_name], proxy_set, device_name)
                 testbed.add_device(new_dev)
-                device_list[device_name]['new_device'] = False
                 continue
 
-            # if the device is already in the testbed, check if the interface exists or not
-            if not self._add_unconnected_interfaces:
-                for interface in device_list[device_name]['ports']:
+            # if the device is already in the testbed, check if adding all interfaces is needed
+            if self._add_unconnected_interfaces:
 
-                    #if interface does not exist add it to the testbed
+                # get all interfaces and add them to testbed
+                interface_list = testbed.devices[device_name].parse('show interfaces description')
+                for interface in interface_list['interfaces']:
                     if interface not in testbed.devices[device_name].interfaces:
                         type_name = interface_filter.match(interface)
                         interface_a = Interface(interface,
                                                 type=type_name[0].lower())
                         interface_a.device = testbed.devices[device_name]
                 continue
+            
+            # if not just add any new interfaces found to the testbed
+            for interface in device_list[device_name]['ports']:
 
-            # get all interfaces and add them to testbed
-            interface_list = testbed.devices[device_name].parse('show interfaces description')
-            for interface in interface_list['interfaces']:
+                    #if interface does not exist add it to the testbed
                 if interface not in testbed.devices[device_name].interfaces:
                     type_name = interface_filter.match(interface)
                     interface_a = Interface(interface,
                                             type=type_name[0].lower())
                     interface_a.device = testbed.devices[device_name]
+                continue
 
     def create_new_device(self, testbed, device_data, proxy_set, device_name):
         '''Create a new device object based on given data to add to testbed
@@ -690,13 +669,22 @@ class Topology(TestbedCreator):
             connection_dict: Dictionary with connections found earlier
             testbed: testbed to write connections into
         '''
+        interface_filter = re.compile(r'.+?(?=\d)')
         log.info('Adding connections to testbed')
         for device in connection_dict:
             log.info('Writing connections found in {}'.format(device))
             for interface_name in connection_dict[device]:
+                
+                #if connecting interface is not in the testbed, create the interface
+                if interface_name not in testbed.devices[device].interfaces:
+                    type_name = interface_filter.match(interface_name)
+                    interface= Interface(interface_name,
+                                        type=type_name[0].lower())
+                    interface.device = testbed.devices[device]
+                else:
 
-                # get the interface found in the connection on the device searched
-                interface = testbed.devices[device].interfaces[interface_name]
+                    # get the interface found in the connection on the device searched
+                    interface = testbed.devices[device].interfaces[interface_name]
 
                 # if the interface is not already part of a link get a list of
                 # all interfaces involved in the link and create a new link
