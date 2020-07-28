@@ -31,10 +31,11 @@ class Topology(TestbedCreator):
 
     Takes a yaml file given by argument testbed_file and attempts to connect
     to each device in the testbed and discover the devices connection using
-    cdp and lldp and writes it to a new yaml file
+    cdp and lldp and writes it to a new yaml file. Can also discover devices
+    connected to it.
 
     Args:
-        testbed-file('str'): Mandatory argument - testbed-file
+        testbed-file ('str'): Mandatory argument - testbed-file
         config-discovery ('bool): if enabled the script will enable cdp and lldp on devices
                             and disable it afterwards default is false
         add-unconnected-interfaces('bool'): if enabled, script will add all interfaces to
@@ -63,7 +64,7 @@ class Topology(TestbedCreator):
     --testbed-file=value                           |  testbed_file=value
     --config-discovery                             |  config_discovery
     --add-unconnected-interfaces                   |  add_unconnected_interfaces=True
-    --exclude-network='<ipv4> <ipv4>'              |  exclude_network='<ipv4> <ipv4>'  
+    --exclude-network='<ipv4> <ipv4>'              |  exclude_network='<ipv4> <ipv4>'
     --exclude-interfaces='<interface> <interface>' |  exclude_interfaces='<interface> <interface>'
     --only-links                                   |  only_links=True
     --alias='<device>:<alias> <device>:<alias>'    |  alias='<device>:<alias> <device>:<alias>'
@@ -95,7 +96,7 @@ class Topology(TestbedCreator):
         """The _generate is called by the testbed creator - It starts here
         Takes testbed information and writes the topology information into
         a yaml file
-        
+
         Returns:
             dict: The intermediate dictionary format of the testbed data.
         """
@@ -103,7 +104,7 @@ class Topology(TestbedCreator):
         # Load testbed file
         testbed = load(self._testbed_file)
 
-        # Re-open the testbed file as yaml so we can read the 
+        # Re-open the testbed file as yaml so we can read the
         # connection password - so we can re-create the yaml
         # with these credential
         with open(self._testbed_file, 'r') as stream:
@@ -111,6 +112,7 @@ class Topology(TestbedCreator):
                 testbed_yaml = safe_load(stream)
             except YAMLError as exc:
                 raise exc('Error Loading Yaml file {}'.format(self._testbed_file))
+
         # Standardizing exclude networks
         exclude_networks = []
         for network in self._exclude_network.split():
@@ -151,8 +153,9 @@ class Topology(TestbedCreator):
             connections = self.process_neighbor_data(testbed, device_list,
                                                      exclude_networks, result)
             log.info('Connections found in current set of devices: {}'.format(connections))
-            
+
             # Create new devices to add to testbed
+            # This make testbed.devices grow, add these new devices
             self._write_devices_into_testbed(device_list, proxy_set,
                                              credential_dict, testbed)
 
@@ -182,11 +185,11 @@ class Topology(TestbedCreator):
     def process_neighbor_data(self, testbed, device_list, exclude_networks, result):
         '''
         Args:
-            testbed: testbed of devices that will be visited
+            testbed: testbed of devices that have been visited
             device_list: list of device with information about how to
                             connect and their existing interfaces
             exclude_networks : range of ip addresses whose connections won't be logged in the yaml
-            result:
+            result: <...>
 
         Returns:
             {device:{interface with connection:{'dest_host': destination device,
@@ -201,9 +204,9 @@ class Topology(TestbedCreator):
         for entry in result:
             for device in entry:
                 conn_dict[device] = self.get_device_connections(entry[device],
-                                                                device, 
-                                                                device_list, 
-                                                                exclude_networks, 
+                                                                device,
+                                                                device_list,
+                                                                exclude_networks,
                                                                 testbed)
 
         return conn_dict
@@ -220,7 +223,7 @@ class Topology(TestbedCreator):
                             connect and their existing interfaces
             exclude_networks : range of ip addresses whose connections won't be logged in the yaml
             testbed: testbed of devices, used to check if found device is already in testbed or not
-            
+
         Returns:
             Dictionary containing the connection info found on currently accesible
             devices
@@ -286,18 +289,18 @@ class Topology(TestbedCreator):
             # skip the connection and begin checking the next connection
             if interface in self._exclude_interfaces:
                 log.info('connection interface {} is found in '
-                        'exclude interface list, skipping connection'.format(
+                         'exclude interface list, skipping connection'.format(
                             interface))
                 continue
             if dest_port in self._exclude_interfaces:
                 log.info('destination interface {} is found in '
-                        'exclude interface list, skipping connection'.format(
+                         'exclude interface list, skipping connection'.format(
                             dest_port))
                 continue
 
             # get the managment and interface addresses for the neighboring device
-            mgmt_address = connection.get('management_addresses')
-            int_address = connection.get('interface_addresses')
+            mgmt_address = connection.get('management_addresses', [])
+            int_address = connection.get('interface_addresses', [])
             int_set = {ip for ip in int_address}
             mgmt_set = {ip for ip in mgmt_address}
 
@@ -396,7 +399,7 @@ class Topology(TestbedCreator):
                             break
                     if stop:
                         continue
-                
+
                 # get the name of the operating system of the destination device
                 os = self.get_os(neighbor['system_description'], '')
 
@@ -423,14 +426,14 @@ class Topology(TestbedCreator):
         # assume the adress is a managment IP and remove the address
         # from the interface address set
         int_address.difference_update(mgmt_address)
-        
+
         # if the device is not yet listed, write all traits intp the device list
         if dest_host not in device_list:
             device_list[dest_host] = {'ports': {dest_port},
                                     'ip':mgmt_address,
                                     'os': os,
                                     'finder': (discover_name, int_address)}
-        
+
         # if the device already exists in the device list, add the new interfaces
         # and ip addresses to the list
         else:
@@ -438,14 +441,14 @@ class Topology(TestbedCreator):
             if device_list[dest_host]['os'] is None:
                 device_list[dest_host]['os'] = os
             device_list[dest_host]['ip'] = device_list[dest_host]['ip'].union(mgmt_address)
-        
+
 
     def add_to_device_connections(self, device_connections,
                                dest_host, dest_port,interface, dev):
         '''Adds the information about a connection to be added to the topology
         recording what device interface combo is connected to the given
         interface and ip address involved in the connection
-        
+
         Args:
             device_connections: Dictionary of connections to write info into
             dest_host: device at other end of connection
@@ -465,7 +468,7 @@ class Topology(TestbedCreator):
                                                         interface,
                                                         dest_host,
                                                         dest_port))
-        
+
         # if the interface is already in the connection dict,
         # verify that the connection is unique before adding to dict
         else:
@@ -540,7 +543,7 @@ class Topology(TestbedCreator):
                                                 type=type_name[0].lower())
                         interface_a.device = testbed.devices[device_name]
                 continue
-            
+
             # if not just add any new interfaces found to the testbed
             for interface in device_list[device_name]['ports']:
 
@@ -595,7 +598,7 @@ class Topology(TestbedCreator):
                         'ip': ip,
                         'proxy': finder_proxy
                         }
-                    
+
         # create the new device
         dev_obj = Device(device_name,
                     os=device_data['os'],
@@ -624,7 +627,7 @@ class Topology(TestbedCreator):
             testbed = testbed where device is found
             credentials = credentials of finder device
             ip = interface ip used in connection
-        
+
         Returns:
             Either a simple proxy or a list of proxy commands to use in
             connecting to targe device
@@ -633,7 +636,7 @@ class Topology(TestbedCreator):
         finder_device = testbed.devices[finder_name]
         user = credentials['default']['username']
 
-        # Search for an ssh connection to use and see if it has 
+        # Search for an ssh connection to use and see if it has
         # existing proxy information
         for conn in finder_device.connections:
             if conn == 'defaults':
@@ -649,18 +652,18 @@ class Topology(TestbedCreator):
         # if there is no proxy found, create a simple one proxy connection
         if new_proxy is None:
             return finder_name
-        
+
         # if the proxy information is a list of proxy commands, append necessary extra proxy commands to list
         if isinstance(new_proxy, list):
             new_proxy[-1]['command'] = 'ssh {user}@{ip}'.format(user=user, ip=conn_ip)
             new_proxy.append({'device': finder_name, 'command': 'ssh {user}@{ip}'.format(user=user, ip=ip)})
             return new_proxy
-        
+
         # if the proxy information found is a simple proxy connection, create a set of proxy commands to use
         if isinstance(new_proxy,str):
             proxy_steps = [{'device':new_proxy,'command':'ssh {}'.format(conn_ip)},
                            {'device':finder_name, 'command': 'ssh {user}@{ip}'.format(user=user, ip=ip)}]
-            return proxy_steps        
+            return proxy_steps
 
     def _write_connections_to_testbed(self, connection_dict, testbed):
         '''Writes the connections found in the connection_dict into the testbed
@@ -674,7 +677,7 @@ class Topology(TestbedCreator):
         for device in connection_dict:
             log.info('Writing connections found in {}'.format(device))
             for interface_name in connection_dict[device]:
-                
+
                 #if connecting interface is not in the testbed, create the interface
                 if interface_name not in testbed.devices[device].interfaces:
                     type_name = interface_filter.match(interface_name)
@@ -711,7 +714,7 @@ class Topology(TestbedCreator):
                             link.connect_interface(testbed.devices[dev].interfaces[dest_int])
 
     def create_yaml_dict(self, testbed, testbed_yaml, credential_dict):
-        '''Integrate the new information added to the testbed 
+        '''Integrate the new information added to the testbed
         into the testbed_yaml file
 
         Args:
