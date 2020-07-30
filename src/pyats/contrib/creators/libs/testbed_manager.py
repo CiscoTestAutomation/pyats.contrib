@@ -29,10 +29,7 @@ class TestbedManager(object):
         '''Creates a ThreadPoolExecutor designed to connect to each device in
 
         Args:
-            limit = max number of threads to spawn
-
-        Returns:
-            None
+            limit ('int'): max number of threads to spawn
         '''
 
         # Set up a thread pool executor to connect to all devices at the same time
@@ -50,7 +47,7 @@ class TestbedManager(object):
         connections and after that enable cdp and lldp if allowed
 
         Args:
-            device: name of device being connected
+            device ('str'): name of device being connected
         '''
 
         # if there is a prefered alias for the device, attempt to connect with device
@@ -78,7 +75,7 @@ class TestbedManager(object):
             if not self.ssh_only:
                 try:
                     self.testbed.devices[device].connect(via = str(one_connect),
-                                                    connection_timeout=self.timeout)
+                                                         connection_timeout=self.timeout)
                     break
                 except Exception:
 
@@ -90,7 +87,7 @@ class TestbedManager(object):
             if self.testbed.devices[device].connections[one_connect].get('protocol', '') == 'ssh':
                 try:
                     self.testbed.devices[device].connect(via=str(one_connect),
-                                                    connection_timeout=self.timeout)
+                                                         connection_timeout=self.timeout)
                     break
                 except Exception:
                     # if connection fails, erase the connection from connection mgr
@@ -123,7 +120,7 @@ class TestbedManager(object):
         Once done - Then add it to the cdp_configured list
 
         Args:
-            device: the device having cdp enabled
+            device ('device'): the device having cdp enabled
         '''
 
         # Check if it is already enabled 
@@ -137,7 +134,7 @@ class TestbedManager(object):
         except Exception:
             log.error("Exception configuring cdp "
                         "for {device}".format(device=device.name),
-                                            exc_info=True)
+                                              exc_info=True)
         else:
             self.cdp_configured.add(device.name)
 
@@ -167,7 +164,7 @@ class TestbedManager(object):
         if it is disabled and and then marks that configuration was done
 
         Args:
-            device: the device having lldp enabled
+            device ('device'): the device having lldp enabled
         '''
 
         # Check if it is already enabled 
@@ -181,20 +178,13 @@ class TestbedManager(object):
         except Exception:
             log.error("Exception configuring cdp "
                         "for {device}".format(device=device.name),
-                                            exc_info=True)
+                                              exc_info=True)
         else:
             self.lldp_configured.add(device.name)
 
     def get_neigbor_data(self):
         '''Takes a testbed and processes the cdp and lldp data of every
         device on the testbed that has not yet been visited
-
-        Args:
-            testbed: testbed of devices that will be visited
-            device_list: list of device with information about how to
-                            connect and their existing interfaces
-            exclude_networks : range of ip addresses whose connections won't be logged in the yaml
-            dev_man: device manager object for interacting with devices
 
         Returns:
             [{device:{'cdp':DATA, 'lldp':data}, device2:{'cdp':data,'lldp':data}}]
@@ -212,34 +202,12 @@ class TestbedManager(object):
         result = pcall(self.get_neighbor_info, device = dev_to_test)
         return result
 
-    def unconfigure_neighbor_discovery_protocols(self, device):
-        '''Unconfigures neighbor discovery protocols on device if they
-        were enabled by the script earlier
-
-        Args:
-            device: device to unconfigure protocols on
-        '''
-
-        # if the device had cdp configured by the script, disable cdp on the device
-        if device.name in self.cdp_configured:
-            try:
-                device.api.unconfigure_cdp()
-            except Exception as e:
-                log.error('Error unconfiguring cdp on device {}: {}'.format(device.name, e))
-
-        # if the device had lldp configured by the script, disable lldp on the device
-        if device.name in self.lldp_configured:
-            try:
-                device.api.unconfigure_lldp()
-            except Exception as e:
-                log.error('Error unconfiguring lldp on device {}: {}'.format(device.name, e))
-
     def get_neighbor_info(self, device):
         '''Method designed to be used with pcall, gets the devices cdp and lldp
         neighbor data and then returns it in a dictionary format
 
         Args:
-            device: target to device to call cdp and lldp commands on
+            device ('device'): target to device to call cdp and lldp commands on
         '''
         cdp = {}
         lldp = {}
@@ -259,11 +227,33 @@ class TestbedManager(object):
             log.error("Exception occurred getting lldp info", exc_info=True)
         return {device.name: {'cdp':cdp, 'lldp':lldp}}
 
+    def unconfigure_neighbor_discovery_protocols(self, device):
+        '''Unconfigures neighbor discovery protocols on device if they
+        were enabled by the script earlier
+
+        Args:
+            device ('device'): device to unconfigure protocols on
+        '''
+
+        # if the device had cdp configured by the script, disable cdp on the device
+        if device.name in self.cdp_configured:
+            try:
+                device.api.unconfigure_cdp()
+            except Exception as e:
+                log.error('Error unconfiguring cdp on device {}: {}'.format(device.name, e))
+
+        # if the device had lldp configured by the script, disable lldp on the device
+        if device.name in self.lldp_configured:
+            try:
+                device.api.unconfigure_lldp()
+            except Exception as e:
+                log.error('Error unconfiguring lldp on device {}: {}'.format(device.name, e))
+
     def get_interfaces_ipV4_address(self, device):
         '''Get the ip address for all of the generated interfaces on the give device
 
         Args:
-            device: device to get interface ip addresss for
+            device ('device'): device to get interface ip addresss for
         '''
 
         # if the device isn't connected or the device doesn't have any interfaces to get ip address for
@@ -281,7 +271,7 @@ class TestbedManager(object):
         connecting to other devices
 
         Args:
-            testbed: testbed to collect credentials and proxies for
+            yaml ('dict'): testbed to collect credentials and proxies for
 
         Returns:
             dict of credentials used in connections
