@@ -7,6 +7,7 @@ from pyats.async_ import pcall
 
 log = logging.getLogger(__name__)
 
+log.setLevel(logging.INFO)
 
 class TestbedManager(object):
     '''Class designed to handle device interactions for connecting devcices
@@ -31,17 +32,33 @@ class TestbedManager(object):
         Args:
             limit ('int'): max number of threads to spawn
         '''
-
+        
+        results = {}
+        success = set()
+        fail = set()
+        skip = set()
         # Set up a thread pool executor to connect to all devices at the same time
         with ThreadPoolExecutor(max_workers = limit) as executor:
             for device_name, device_obj in self.testbed.devices.items():
                 # If already connected or device has already been visited skip
-                if device_obj.connected or device_obj.os not in self.supported_os or device_name in self.visited_devices:
+                if device_obj.connected or device_name in self.visited_devices:
                     continue
-                log.info('Attempting to connect to {device}'.format(device=device_name))
-                executor.submit(self._connect_one_device,
-                                device_name)
-
+                if device_obj.os not in self.supported_os:
+                    log.debug('Device {} does not have valid os, skipping'.format(device_name))
+                    skip.add(device_name)
+                    continue
+                log.debug('Attempting to connect to {device}'.format(device=device_name))
+                results[device_name] = executor.submit(self._connect_one_device,
+                                                       device_name)
+        
+        for name, exe in results.items():
+            if exe.result():
+                success.add(name)
+            else:
+                fail.add(name)
+        return success, fail, skip
+        
+        
     def _connect_one_device(self, device):
         '''Connect to the given device in the testbed using the given
         connections and after that enable cdp and lldp if allowed
@@ -55,19 +72,21 @@ class TestbedManager(object):
         # attempt to connect with the default
         if device in self.alias_dict:
             if self.alias_dict[device] in self.testbed.devices[device].connections:
-                log.info('Attempting to connect to {} with alias {}'.format(device, self.alias_dict[device]))
+                log.debug('Attempting to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                 try:
                     self.testbed.devices[device].connect(via = str(self.alias_dict[device]),
-                                                    connection_timeout=self.timeout)
+                                                         connection_timeout=self.timeout,
+                                                         log_stdout=False)
+                    log.debug('Connected to device {}'.format(device))
                 except:
-                    log.info('Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
+                    log.debug('Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                     self.testbed.devices[device].destroy()
                 else:
                     
                     # No exception raised - get out
-                    return
+                    return self.testbed.devices[device].connected
             else:
-                log.info('Device {} does not have a connection with alias {}'.format(device, self.alias_dict[device]))
+                log.debug('Device {} does not have a connection with alias {}'.format(device, self.alias_dict[device]))
 
         # Use default - Go through all connection on the device
         for one_connect in self.testbed.devices[device].connections:
@@ -75,7 +94,9 @@ class TestbedManager(object):
             if not self.ssh_only:
                 try:
                     self.testbed.devices[device].connect(via = str(one_connect),
-                                                         connection_timeout=self.timeout)
+                                                         connection_timeout=self.timeout,
+                                                         log_stdout=False)
+                    log.debug('Connected to device {}'.format(device))
                     break
                 except Exception:
 
@@ -87,11 +108,17 @@ class TestbedManager(object):
             if self.testbed.devices[device].connections[one_connect].get('protocol', '') == 'ssh':
                 try:
                     self.testbed.devices[device].connect(via=str(one_connect),
-                                                         connection_timeout=self.timeout)
+                                                         connection_timeout=self.timeout,
+                                                         log_stdout=False)
+                    log.debug('Connected to device {}'.format(device))
                     break
                 except Exception:
                     # if connection fails, erase the connection from connection mgr
                     self.testbed.devices[device].destroy()
+        
+        if not self.testbed.devices[device]:
+            log.debug('Failed to connect to {}'.format(device))
+        return self.testbed.devices[device].connected
                 
 
     def configure_testbed_cdp_protocol(self):
@@ -114,6 +141,7 @@ class TestbedManager(object):
         # Configure cdp on these device
         pcall(self.configure_device_cdp_protocol,
               device=device_to_configure)
+        log.info('      cdp was configured for devices {}'.format(self.cdp_configured))
 
     def configure_device_cdp_protocol(self, device):
         '''If allowed to edit device configuration enable cdp on the device
@@ -158,6 +186,7 @@ class TestbedManager(object):
         # Configure lldp on these device    
         pcall(self.configure_device_lldp_protocol,
               device= device_to_configure)
+        log.info('      lldp was configured for devices {}'.format(self.lldp_configured))
 
     def configure_device_lldp_protocol(self, device):
         '''If allowed to edit device configuration enable lldp on the device
@@ -171,12 +200,12 @@ class TestbedManager(object):
         if device.api.verify_lldp_in_state(max_time= self.timeout, check_interval=5):
             # Already configured - Get out
             return
-
+        log.debug('Configuring lldp protocol for {}'.format(device.name))
         # Configure it
         try:
             device.api.configure_lldp()
         except Exception:
-            log.error("Exception configuring cdp "
+            log.error("Exception configuring lldp "
                         "for {device}".format(device=device.name),
                                               exc_info=True)
         else:
@@ -190,13 +219,16 @@ class TestbedManager(object):
             [{device:{'cdp':DATA, 'lldp':data}, device2:{'cdp':data,'lldp':data}}]
         '''
         dev_to_test = []
-
+        dev_to_test_names = set()
         # if the device has not been visited add it to the list of devices to test
         # and then add it to list of devices that have been visited
-        for device in self.testbed.devices:
-            if device not in self.visited_devices:
-                self.visited_devices.add(device)
-                dev_to_test.append(self.testbed.devices[device])
+        for device_name, device_obj in self.testbed.devices.items():
+            if device_name in self.visited_devices:
+                continue
+            self.visited_devices.add(device_name)
+            if device_obj.os in self.supported_os and device_obj.connected: 
+                dev_to_test.append(self.testbed.devices[device_name])
+                dev_to_test_names.add(device_name)
 
         # use pcall to get cdp and lldp information for all devices in to test list
         result = pcall(self.get_neighbor_info, device = dev_to_test)
@@ -214,6 +246,8 @@ class TestbedManager(object):
         if device.os not in self.supported_os or not device.connected:
             return {device.name: {'cdp':cdp, 'lldp':lldp}}
 
+        log.debug('Getting cdp and lldp neighbor info for {}'.format(device.name))
+        
         # get the devices cdp neighbor information
         try:
             cdp = device.api.get_cdp_neighbors_info()
@@ -225,6 +259,8 @@ class TestbedManager(object):
             lldp = device.api.get_lldp_neighbors_info()
         except Exception:
             log.error("Exception occurred getting lldp info", exc_info=True)
+
+        log.debug('Got cdp and lldp neighbor info for {}'.format(device.name))
         return {device.name: {'cdp':cdp, 'lldp':lldp}}
 
     def unconfigure_neighbor_discovery_protocols(self, device):
@@ -234,7 +270,7 @@ class TestbedManager(object):
         Args:
             device ('device'): device to unconfigure protocols on
         '''
-
+        log.debug('Unconfiguring neighbor discovery protocol for {}'.format(device.name))
         # if the device had cdp configured by the script, disable cdp on the device
         if device.name in self.cdp_configured:
             try:
@@ -255,13 +291,14 @@ class TestbedManager(object):
         Args:
             device ('device'): device to get interface ip addresss for
         '''
-
+        
+        log.debug('Getting interface ipv4 addresses for {}'.format(device.name))
         # if the device isn't connected or the device doesn't have any interfaces to get ip address for
         if not device.connected or device.os not in self.supported_os or len(device.interfaces) < 1:
             return
         for interface in device.interfaces.values():
             if interface.ipv4 is None:
-                ip = device.api.get_interface_ipv4_address(interface.name)
+                ip = device.api.get_interface_ipv4_address(interface.name, )
                 if ip:
                     ip = ipaddress.IPv4Interface(ip)
                     interface.ipv4 = ip
