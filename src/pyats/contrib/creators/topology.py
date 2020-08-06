@@ -17,13 +17,25 @@ from genie.testbed import load
 from pyats.async_ import pcall
 from genie.conf.base import Testbed, Device, Interface, Link
 from genie.metaparser.util.exceptions import SchemaEmptyParserError
+from pyats.log import ScreenHandler
+from pyats.log import TaskLogHandler
 
 from .libs import testbed_manager
 from .creator import TestbedCreator
 
+
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-SUPPORTED_OS = ['nxos', 'iosxr', 'iosxe', 'ios']
+log.setLevel(10)
+sh = ScreenHandler()
+sh.setLevel(logging.INFO)
+log.addHandler(sh)
+log.propagate = False
+fh = logging.FileHandler('test.log')
+fh.setLevel(logging.DEBUG)
+log.addHandler(fh)
+
+
+SUPPORTED_OS = {'nxos', 'iosxr', 'iosxe', 'ios'}
 
 
 class Topology(TestbedCreator):
@@ -266,7 +278,6 @@ class Topology(TestbedCreator):
 
         # parse cdp information
         result = data.get('cdp', [])
-        log.debug('cdp neighbor information: {}'.format(result))
         if result:
             log.debug('Processing cdp information for {}'.format(device_name))
             self._process_cdp_information(result, device_name, device_list,
@@ -274,7 +285,6 @@ class Topology(TestbedCreator):
 
         # parse lldp information
         result = data.get('lldp', [])
-        log.debug('lldp neighbor information: {}'.format(result))
         if result and result['total_entries'] != 0:
             log.debug('Processing lldp information for {}'.format(device_name))
             self._process_lldp_information(result, device_name, device_list,
@@ -544,6 +554,8 @@ class Topology(TestbedCreator):
                 return 'ios'
         if 'NX-OS' in system_string or 'NX-OS' in platform_name:
             return 'nxos'
+        # So that None value will not be entered into
+        return 'No OS Found'
 
     def _write_devices_into_testbed(self, device_list, proxy_set, credential_dict, testbed):
         ''' Writes any new devices found in the device list into the testbed

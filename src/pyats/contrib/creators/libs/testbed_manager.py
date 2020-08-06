@@ -4,10 +4,18 @@ import ipaddress
 from concurrent.futures import ThreadPoolExecutor
 from genie.conf.base import Testbed, Device, Interface, Link
 from pyats.async_ import pcall
+from pyats.log import TaskLogHandler
+from pyats.log import ScreenHandler
 
 log = logging.getLogger(__name__)
-
-log.setLevel(logging.INFO)
+log.setLevel(10)
+sh = ScreenHandler()
+sh.setLevel(logging.INFO)
+log.addHandler(sh)
+log.propagate = False
+fh = logging.FileHandler('test.log')
+fh.setLevel(logging.DEBUG)
+log.addHandler(fh)
 
 class TestbedManager(object):
     '''Class designed to handle device interactions for connecting devcices
@@ -139,8 +147,11 @@ class TestbedManager(object):
             return
 
         # Configure cdp on these device
-        pcall(self.configure_device_cdp_protocol,
-              device=device_to_configure)
+        res = pcall(self.configure_device_cdp_protocol,
+                    device=device_to_configure)
+        for result in res:
+            if result[1]:
+                self.cdp_configured.add(result[0])        
         log.info('      cdp was configured for devices {}'.format(self.cdp_configured))
 
     def configure_device_cdp_protocol(self, device):
@@ -154,8 +165,9 @@ class TestbedManager(object):
         # Check if it is already enabled 
         if device.api.verify_cdp_in_state(max_time=self.timeout, check_interval=5):
             # Already configured - Get out
-            return
-
+            return(device.name, False)
+        
+        log.debug('Configuring cdp protocol for {}'.format(device.name))
         # Configure it
         try:
             device.api.configure_cdp()
@@ -163,8 +175,9 @@ class TestbedManager(object):
             log.error("Exception configuring cdp "
                         "for {device}".format(device=device.name),
                                               exc_info=True)
+            return(device.name, False)
         else:
-            self.cdp_configured.add(device.name)
+            return(device.name, True)
 
     def configure_testbed_lldp_protocol(self):
         ''' Method checks if lldp configuration is necessary for all devices in
@@ -184,8 +197,11 @@ class TestbedManager(object):
             return
 
         # Configure lldp on these device    
-        pcall(self.configure_device_lldp_protocol,
-              device= device_to_configure)
+        res = pcall(self.configure_device_lldp_protocol,
+                    device= device_to_configure)
+        for result in res:
+            if result[1]:
+                self.lldp_configured.add(result[0])
         log.info('      lldp was configured for devices {}'.format(self.lldp_configured))
 
     def configure_device_lldp_protocol(self, device):
@@ -199,7 +215,8 @@ class TestbedManager(object):
         # Check if it is already enabled 
         if device.api.verify_lldp_in_state(max_time= self.timeout, check_interval=5):
             # Already configured - Get out
-            return
+            return(device.name, False)
+        
         log.debug('Configuring lldp protocol for {}'.format(device.name))
         # Configure it
         try:
@@ -208,8 +225,9 @@ class TestbedManager(object):
             log.error("Exception configuring lldp "
                         "for {device}".format(device=device.name),
                                               exc_info=True)
+            return(device.name, False)
         else:
-            self.lldp_configured.add(device.name)
+            return(device.name, True)
 
     def get_neigbor_data(self):
         '''Takes a testbed and processes the cdp and lldp data of every
@@ -229,10 +247,13 @@ class TestbedManager(object):
             if device_obj.os in self.supported_os and device_obj.connected: 
                 dev_to_test.append(self.testbed.devices[device_name])
                 dev_to_test_names.add(device_name)
-
+            
         # use pcall to get cdp and lldp information for all devices in to test list
-        result = pcall(self.get_neighbor_info, device = dev_to_test)
-        return result
+        if dev_to_test:
+            result = pcall(self.get_neighbor_info, device = dev_to_test)
+            return result
+        else:
+            return []
 
     def get_neighbor_info(self, device):
         '''Method designed to be used with pcall, gets the devices cdp and lldp
@@ -251,14 +272,16 @@ class TestbedManager(object):
         # get the devices cdp neighbor information
         try:
             cdp = device.api.get_cdp_neighbors_info()
-        except Exception:
-            log.error("Exception occurred getting cdp info", exc_info=True)
+        except Exception as e:
+            log.error("Exception occurred getting cdp info")
+            log.debug(e)
 
         # get the devices lldp neighbor information
         try:
             lldp = device.api.get_lldp_neighbors_info()
-        except Exception:
-            log.error("Exception occurred getting lldp info", exc_info=True)
+        except Exception as e:
+            log.error("Exception occurred getting lldp info")
+            log.debug(e)
 
         log.debug('Got cdp and lldp neighbor info for {}'.format(device.name))
         return {device.name: {'cdp':cdp, 'lldp':lldp}}
