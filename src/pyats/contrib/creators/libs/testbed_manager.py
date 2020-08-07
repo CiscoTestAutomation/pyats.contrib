@@ -14,7 +14,7 @@ class TestbedManager(object):
        and cdp and lldp
     '''
     def __init__(self, testbed, supported_os, config=False, ssh_only=False, alias_dict={},
-                 timeout=10, v = False):
+                 timeout=10, logfile = ''):
 
         self.config = config
         self.ssh_only = ssh_only

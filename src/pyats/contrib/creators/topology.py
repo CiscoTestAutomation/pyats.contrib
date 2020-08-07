@@ -669,7 +669,7 @@ class Topology(TestbedCreator):
         '''
         # filter to strip out the numbers from an interface to create a type name
         # example: ethernet0/3 becomes ethernet
-        interface_filter = re.compile(r'.+?(?=\d)')
+        interface_filter = re.compile(r'[a-zA-Z]+')
 
         connections = {}
         # get credentials of finder device to use as new device credentials
@@ -784,7 +784,7 @@ class Topology(TestbedCreator):
             connection_dict ('dict'): Dictionary with connections found earlier
             testbed ('testbed'): testbed to write connections into
         '''
-        interface_filter = re.compile(r'.+?(?=\d)')
+        interface_filter = re.compile(r'[a-zA-Z]+')
         log.debug('Adding connections to testbed')
         for device in connection_dict:
             log.debug('   Writing connections found in {}'.format(device))
