@@ -27,7 +27,7 @@ from .creator import TestbedCreator
 creator = __name__.rsplit('.',1)[0]
 creator_logger = logging.getLogger(creator)
 
-# configure logger to display the info level logs
+# configure parent logger to display the info level logs
 creator_logger.propagate = False
 creator_logger.setLevel(logging.DEBUG)
 sh = ScreenHandler()
@@ -36,7 +36,7 @@ creator_logger.addHandler(sh)
 
 log = logging.getLogger(__name__)
 
-SUPPORTED_OS = {'nxos', 'iosxr', 'iosxe', 'ios'}
+SUPPORTED_OS = {'nxos', 'iosxr', 'iosxe', 'ios','DUMMY'}
 
 
 class Topology(TestbedCreator):
@@ -78,6 +78,8 @@ class Topology(TestbedCreator):
                               the devices connection credentials are
         debug-log ('str'): Name of debug log to be generated, if no argument give no debug log will be 
                            made
+        disable-config ('bool'): If true, the script will not run config commands on devices that it
+                                 connects to
 
     CLI Argument                                   |  Class Argument
     --------------------------------------------------------------------------------------------
@@ -88,11 +90,12 @@ class Topology(TestbedCreator):
     --exclude-interfaces='<interface> <interface>' |  exclude_interfaces='<interface> <interface>'
     --only-links                                   |  only_links=True
     --alias='<device>:<alias> <device>:<alias>'    |  alias='<device>:<alias> <device>:<alias>'
-    --ssh_only                                     |  ssh_only=True
+    --ssh-only                                     |  ssh_only=True
     --timeout=value                                |  timeout=value
     --universal-login='<username> <password>'      |  universal_login='<username> <password>'
-    --cred_prompt                                  |  cred_prompt=True
+    --cred-prompt                                  |  cred_prompt=True
     --debug-log='<log name>'                       |  debug_log = '<log name>'
+    --disable-config                               |  disable_config = True
     """
 
     def _init_arguments(self):
@@ -114,7 +117,8 @@ class Topology(TestbedCreator):
                 'ssh_only': False,
                 'universal_login': '',
                 'cred_prompt': False,
-                'debug_log': ''
+                'debug_log': '',
+                'disable_config': False
             }
         }
 
@@ -146,10 +150,9 @@ class Topology(TestbedCreator):
             log_file = self.create_debug_log()
         else:
             log_file = ''
-        
         # Standardizing exclude networks
         exclude_networks = []
-        for network in self._exclude_network.split():
+        for network in self._exclude_networks.split():
             try:
                 exclude_networks.append(ipaddress.ip_network(network))
             except Exception:
@@ -167,7 +170,8 @@ class Topology(TestbedCreator):
                                                  alias_dict=self.alias_dict,
                                                  timeout=self._timeout,
                                                  supported_os=SUPPORTED_OS,
-                                                 logfile = log_file)
+                                                 logfile = log_file,
+                                                 disable_config=self._disable_config)
 
         # Get the credential for the device from the yaml - so can recreate the
         # yaml with those
@@ -233,6 +237,7 @@ class Topology(TestbedCreator):
                   device= testbed.devices.values())
             log.info('   CDP was unconfigured on {}'.format(dev_man.cdp_configured))
             log.info('   LLDP was unconfigured on {}'.format(dev_man.lldp_configured))
+            time.sleep(5)
         
         # add the new information into testbed_yaml
         final_yaml = self.create_yaml_dict(testbed, testbed_yaml, credential_dict)
@@ -415,14 +420,9 @@ class Topology(TestbedCreator):
             if stop:
                 continue
 
-            # get the name of the operating system of the destination device
-            # and filter the host name from the domain name
-            os = self.get_os(connection['software_version'],
-                             connection['platform'])
-
             # Add the connection information to the device_connections and destination device information to the device_list
             self.add_to_device_list(device_list, dest_host, dest_port, int_set, mgmt_set,
-                                    os, device_name)
+                                    device_name)
             self.add_to_device_connections(device_connections, dest_host, dest_port, interface, device_name)
 
     def _process_lldp_information(self, result, device_name, device_list, exclude_networks , testbed, device_connections):
@@ -491,16 +491,13 @@ class Topology(TestbedCreator):
                     if stop:
                         continue
 
-                # get the name of the operating system of the destination device
-                os = self.get_os(neighbor['system_description'], '')
-
                 # Add the connection information to the device_connections and destination device information to the device_list
                 self.add_to_device_list(device_list, dest_host, dest_port,
-                                        set(), {ip_address}, os, device_name)
+                                        set(), {ip_address}, device_name)
                 self.add_to_device_connections(device_connections, dest_host, dest_port, interface, device_name)
 
     def add_to_device_list(self, device_list, dest_host,
-                           dest_port, int_address, mgmt_address, os, discover_name):
+                           dest_port, int_address, mgmt_address, discover_name):
         '''Add the information needed to create the device in the
         testbed later to the specified list
 
@@ -511,7 +508,6 @@ class Topology(TestbedCreator):
             dest_port ('str'): interface of device to be added
             int_address ('set'): set of ip addresses found under int ip header for device
             mgmt_address ('set'): set of ip addresses found under mgmt ip header for device
-            os ('str'): the os of the device
             discover_name ('str'): the name of the device that discovered dest_host
         '''
         # if the interface addresses is the same as the mgmt adresses
@@ -523,15 +519,12 @@ class Topology(TestbedCreator):
         if dest_host not in device_list:
             device_list[dest_host] = {'ports': {dest_port},
                                       'ip':mgmt_address,
-                                      'os': os,
                                       'finder': (discover_name, int_address)}
 
         # if the device already exists in the device list, add the new interfaces
         # and ip addresses to the list
         else:
             device_list[dest_host]['ports'].add(dest_port)
-            if device_list[dest_host]['os'] is None:
-                device_list[dest_host]['os'] = os
             device_list[dest_host]['ip'] = device_list[dest_host]['ip'].union(mgmt_address)
 
 
@@ -577,30 +570,6 @@ class Topology(TestbedCreator):
                                                                  dest_host,
                                                                  dest_port))
                 device_connections[interface].append(new_entry)
-
-    def get_os(self, system_string, platform_name):
-        '''Get the os from the system_description output from the show
-        cdp and show lldp neighbor parsers
-
-        Args:
-            system_string ('str'): possible location for os name
-            platform_name ('str'): possible location for os name
-
-        Return:
-            returns os as string or None
-        '''
-
-        if 'IOS' in system_string or 'IOS' in platform_name:
-            if 'XE' in system_string or 'XE' in platform_name:
-                return 'iosxe'
-            elif 'XR' in system_string or 'XR' in platform_name:
-                return 'iosxr'
-            else:
-                return 'ios'
-        if 'NX-OS' in system_string or 'NX-OS' in platform_name:
-            return 'nxos'
-        # So that None value will not be entered into
-        return 'No OS Found'
 
     def _write_devices_into_testbed(self, device_list, proxy_set, credential_dict, testbed):
         ''' Writes any new devices found in the device list into the testbed
@@ -684,15 +653,16 @@ class Topology(TestbedCreator):
 
         # create connections for the managment addresses in the device list
         for ip in device_data['ip']:
-            for proxy in proxy_set:
-                # create connection using possible proxies
-                connections['ssh' + proxy] = {'protocol': 'ssh',
-                                              'ip': ip,
-                                              'proxy': proxy}
+            if self.validIPAddress(ip):
+                for proxy in proxy_set:
+                    # create connection using possible proxies
+                    connections['ssh' + proxy] = {'protocol': 'ssh',
+                                                  'ip': ip,
+                                                  'proxy': proxy}
 
         # if there is an interface ip, create a proxy connection
         # using the discovery device
-        if device_data['finder'][1]:
+        if device_data['finder'][1] and self.validIPAddress(device_data['finder'][1]):
             for ip in device_data['finder'][1]:
                 finder_proxy = self.write_proxy_chain(
                                 finder[0], testbed, credentials, ip)
@@ -702,12 +672,11 @@ class Topology(TestbedCreator):
 
         # create the new device
         dev_obj = Device(device_name,
-                    os=device_data['os'],
+                    os= 'DUMMY',
                     credentials=credentials,
                     type='device',
                     connections=connections,
-                    custom={'abstraction': {'order':['os'],
-                                            'os': device_data['os']}})
+                    custom={'abstraction': {'order':['os']}})
 
         # create and add the interfaces for the new device
         for interface in device_data['ports']:
@@ -717,6 +686,14 @@ class Topology(TestbedCreator):
             interface_a.device = dev_obj
 
         return dev_obj
+    
+    def validIPAddress(self, ip):
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        else:
+            return True
     
     def _prompt_credentials(self, device_name):
         '''Prompt user for credentials to access

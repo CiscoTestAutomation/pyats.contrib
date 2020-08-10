@@ -14,18 +14,23 @@ class TestbedManager(object):
        and cdp and lldp
     '''
     def __init__(self, testbed, supported_os, config=False, ssh_only=False, alias_dict={},
-                 timeout=10, logfile = ''):
+                 timeout=10, logfile = '', disable_config=False):
 
         self.config = config
         self.ssh_only = ssh_only
         self.testbed = testbed
         self.alias_dict = alias_dict
-        self.timeout = timeout
+        self.timeout = int(timeout)
         self.cdp_configured = set()
         self.lldp_configured = set()
         self.visited_devices = set()
         self.supported_os = supported_os
         self.logfile = logfile
+        if disable_config:
+            self.disable_config = []
+        else:
+            self.disable_config = None
+        print(self.disable_config)
 
     def connect_all_devices(self, limit):
         '''Creates a ThreadPoolExecutor designed to connect to each device in parallel
@@ -84,7 +89,8 @@ class TestbedManager(object):
                                                          connection_timeout=self.timeout,
                                                          log_stdout=False,
                                                          logfile = self.logfile,
-                                                         learn_os = True)
+                                                         learn_os = True,
+                                                         init_config_commands = self.disable_config)
                     log.debug('     Connected to device {}'.format(device))
                 except Exception as e:
                     log.debug('     Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
@@ -108,7 +114,8 @@ class TestbedManager(object):
                                                          connection_timeout=self.timeout,
                                                          log_stdout=False,
                                                          logfile = self.logfile,
-                                                         learn_os = True)
+                                                         learn_os = True,
+                                                         init_config_commands = self.disable_config)
                     log.debug('     Connected to device {}'.format(device))
                     break
                 except Exception as e:
@@ -125,7 +132,8 @@ class TestbedManager(object):
                                                          connection_timeout=self.timeout,
                                                          log_stdout=False,
                                                          logfile = self.logfile,
-                                                         learn_os = True)
+                                                         learn_os = True,
+                                                         init_config_commands = self.disable_config)
                     log.debug('     Connected to device {}'.format(device))
                     break
                 except Exception as e:
@@ -148,7 +156,7 @@ class TestbedManager(object):
         # Check which device to configure CDP on
         device_to_configure=[]
         for device_name, device_obj in self.testbed.devices.items():
-            if device_name in self.visited_devices or device_name in self.cdp_configured or not device_obj.connected:
+            if device_name in self.visited_devices or device_name in self.cdp_configured or not device_obj.connected or device_obj.os not in self.supported_os:
                 continue
             device_to_configure.append(device_obj)
 
@@ -198,7 +206,7 @@ class TestbedManager(object):
         # Check which device to configure lldp on
         device_to_configure = []
         for device_name, device_obj in self.testbed.devices.items():
-            if device_name in self.visited_devices or device_name in self.lldp_configured or not device_obj.connected:
+            if device_name in self.visited_devices or device_name in self.lldp_configured or not device_obj.connected or device_obj.os not in self.supported_os:
                 continue
             device_to_configure.append(device_obj)
 
