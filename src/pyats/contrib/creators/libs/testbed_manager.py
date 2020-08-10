@@ -28,10 +28,15 @@ class TestbedManager(object):
         self.logfile = logfile
 
     def connect_all_devices(self, limit):
-        '''Creates a ThreadPoolExecutor designed to connect to each device in
+        '''Creates a ThreadPoolExecutor designed to connect to each device in parallel
+        after it takes the connection results of the objects and sorts them into three
+        sets for logging purposes
 
         Args:
             limit ('int'): max number of threads to spawn
+            
+        Returns:
+            three sets for devices that were connected, failed to connect to, and skipped
         '''
         
         results = {}
@@ -78,7 +83,8 @@ class TestbedManager(object):
                     self.testbed.devices[device].connect(via = str(self.alias_dict[device]),
                                                          connection_timeout=self.timeout,
                                                          log_stdout=False,
-                                                         logfile = self.logfile)
+                                                         logfile = self.logfile,
+                                                         learn_os = True)
                     log.debug('     Connected to device {}'.format(device))
                 except Exception as e:
                     log.debug('     Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
@@ -101,7 +107,8 @@ class TestbedManager(object):
                     self.testbed.devices[device].connect(via = str(one_connect),
                                                          connection_timeout=self.timeout,
                                                          log_stdout=False,
-                                                         logfile = self.logfile)
+                                                         logfile = self.logfile,
+                                                         learn_os = True)
                     log.debug('     Connected to device {}'.format(device))
                     break
                 except Exception as e:
@@ -117,7 +124,8 @@ class TestbedManager(object):
                     self.testbed.devices[device].connect(via=str(one_connect),
                                                          connection_timeout=self.timeout,
                                                          log_stdout=False,
-                                                         logfile = self.logfile)
+                                                         logfile = self.logfile,
+                                                         learn_os = True)
                     log.debug('     Connected to device {}'.format(device))
                     break
                 except Exception as e:

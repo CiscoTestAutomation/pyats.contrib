@@ -5,11 +5,12 @@ import time
 import logging
 import argparse
 import ipaddress
+import getpass
 from itertools import product
 from collections import OrderedDict
 from yaml import (YAMLError, safe_load)
 from concurrent.futures import ThreadPoolExecutor
-import pprint
+
 
 from genie.conf import Genie
 from genie.testbed import load
@@ -54,7 +55,7 @@ class Topology(TestbedCreator):
         add-unconnected-interfaces('bool'): if enabled, script will add all interfaces to
                 topology section of yaml file instead of just interfaces
                 with active connections default is false
-        exclude-network ('str'): list networks that won't be recorded by creator
+        exclude-networks ('str'): list networks that won't be recorded by creator
                 if found as part of a connection, default is that no ips
                 will be excluded
                 Example: <ipv4> <ipv4>
@@ -67,13 +68,13 @@ class Topology(TestbedCreator):
         alias ('str'): takes argument in format device:alias device2:alias2 and
                 and indicates which alias should be used to connect to the
                 device first, default behavior has no prefered alias
-        ssh_only ('bool'): if True the script will only attempt to use ssh connections
+        ssh-only ('bool'): if True the script will only attempt to use ssh connections
                 to connect to devices, default behavior is to use all connections
         timeout ('int'): How long before connection and verification attempts time out.
                         default value is 10 seconds
         universal-login ('str'): Create <username> <password> that will be used to connect
                                  to any new devices
-        cred_prompt ('bool'): if true, there will be a prompt when creating a new device as to what
+        cred-prompt ('bool'): if true, there will be a prompt when creating a new device as to what
                               the devices connection credentials are
         debug-log ('str'): Name of debug log to be generated, if no argument give no debug log will be 
                            made
@@ -105,7 +106,7 @@ class Topology(TestbedCreator):
             'optional': {
                 'config_discovery': False,
                 'add_unconnected_interfaces': False,
-                'exclude_network': '',
+                'exclude_networks': '',
                 'exclude_interfaces':'',
                 'only_links': False,
                 'timeout': 10,
@@ -143,6 +144,8 @@ class Topology(TestbedCreator):
         
         if self._debug_log:
             log_file = self.create_debug_log()
+        else:
+            log_file = ''
         
         # Standardizing exclude networks
         exclude_networks = []
@@ -615,7 +618,7 @@ class Topology(TestbedCreator):
 
         # filter to strip out the numbers from an interface to create a type name
         # example: ethernet0/3 becomes ethernet
-        interface_filter = re.compile(r'.+?(?=\d)')
+        interface_filter = re.compile(r'[a-zA-Z]+')
         new_devs = set()
         log.debug('Adding Newly discovered devices to testbed')
         for device_name in device_list:
@@ -628,10 +631,10 @@ class Topology(TestbedCreator):
                 log.debug('   Device {} has been sucessfully '
                           'added to testbed'.format(device_name))
                 new_devs.add(device_name)
-                continue
+
 
             # if the device is already in the testbed, check if adding all interfaces is needed
-            if self._add_unconnected_interfaces:
+            elif self._add_unconnected_interfaces:
 
                 # get all interfaces and add them to testbed
                 interface_list = testbed.devices[device_name].parse('show interfaces description')
@@ -641,18 +644,17 @@ class Topology(TestbedCreator):
                         interface_a = Interface(interface,
                                                 type=type_name[0].lower())
                         interface_a.device = testbed.devices[device_name]
-                continue
-
-            # if not just add any new interfaces found to the testbed
-            for interface in device_list[device_name]['ports']:
-
-                    #if interface does not exist add it to the testbed
-                if interface not in testbed.devices[device_name].interfaces:
-                    type_name = interface_filter.match(interface)
-                    interface_a = Interface(interface,
-                                            type=type_name[0].lower())
-                    interface_a.device = testbed.devices[device_name]
-                continue
+            else:
+                # if not just add any new interfaces found to the testbed
+                for interface in device_list[device_name]['ports']:
+    
+                        #if interface does not exist add it to the testbed
+                    if interface not in testbed.devices[device_name].interfaces:
+                        type_name = interface_filter.match(interface)
+                        interface_a = Interface(interface,
+                                                type=type_name[0].lower())
+                        interface_a.device = testbed.devices[device_name]
+                    continue
         return new_devs
     
     def create_new_device(self, testbed, device_data, proxy_set, device_name):
@@ -727,7 +729,7 @@ class Topology(TestbedCreator):
             
         '''
         username = input('   Enter username to connect to device {}: '.format(device_name))
-        password = input('   Enter password to connect to device {}: '.format(device_name))
+        password = getpass.getpass('   Enter password to connect to device {}: '.format(device_name))
         return {'default':{'username': username, 'password': password}}
         
     def write_proxy_chain(self, finder_name, testbed, credentials, ip):
@@ -784,6 +786,8 @@ class Topology(TestbedCreator):
             connection_dict ('dict'): Dictionary with connections found earlier
             testbed ('testbed'): testbed to write connections into
         '''
+        # filter to strip out the numbers from an interface to create a type name
+        # example: ethernet0/3 becomes ethernet        
         interface_filter = re.compile(r'[a-zA-Z]+')
         log.debug('Adding connections to testbed')
         for device in connection_dict:
