@@ -30,7 +30,6 @@ class TestbedManager(object):
             self.disable_config = []
         else:
             self.disable_config = None
-        print(self.disable_config)
 
     def connect_all_devices(self, limit):
         '''Creates a ThreadPoolExecutor designed to connect to each device in parallel
@@ -48,6 +47,7 @@ class TestbedManager(object):
         success = set()
         fail = set()
         skip = set()
+        
         # Set up a thread pool executor to connect to all devices at the same time
         with ThreadPoolExecutor(max_workers = limit) as executor:
             for device_name, device_obj in self.testbed.devices.items():
@@ -67,6 +67,7 @@ class TestbedManager(object):
                 success.add(name)
             else:
                 fail.add(name)
+
         return success, fail, skip
         
         
@@ -170,7 +171,7 @@ class TestbedManager(object):
         for result in res:
             if result[1]:
                 self.cdp_configured.add(result[0])        
-        log.info('     cdp was configured for devices {}'.format(self.cdp_configured))
+        
 
     def configure_device_cdp_protocol(self, device):
         '''If allowed to edit device configuration enable cdp on the device
@@ -220,7 +221,7 @@ class TestbedManager(object):
         for result in res:
             if result[1]:
                 self.lldp_configured.add(result[0])
-        log.info('     lldp was configured for devices {}'.format(self.lldp_configured))
+        
 
     def configure_device_lldp_protocol(self, device):
         '''If allowed to edit device configuration enable lldp on the device

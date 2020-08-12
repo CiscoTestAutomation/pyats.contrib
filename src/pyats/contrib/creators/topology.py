@@ -143,6 +143,18 @@ class Topology(TestbedCreator):
             except YAMLError as exc:
                 raise exc('Error Loading Yaml file {}'.format(self._testbed_file))
         
+        if self._config_discovery:
+            reply = ''
+            while reply != 'y':
+                reply = input('Running creator with config-discovery will '
+                              'reset cdp and lldp configuration to basic '
+                              'configuration is this acceptable (y/n)')
+                if reply == 'n':
+                    log.info('Cancelling creator operation')
+                    return
+                if reply != 'n' and reply != 'y':
+                    log.info('Please respond with only y or n')
+        
         if self._cred_prompt and self._universal_login:
             raise Exception('Do not use both universal login and credential prompt')
         
@@ -190,7 +202,10 @@ class Topology(TestbedCreator):
             # connect to unvisited devices
             log.info ('Discovery Process Round {}'.format(count))
             log.info ('   Connecting to devices')
+            
+            log.debug('--------DEBUG LOGS START-------')
             connect, noconnect, skip= dev_man.connect_all_devices(len(testbed.devices))
+            log.debug('--------RESUME CONSOLE LOGS--------')
             if connect:
                 log.info('     Successfully connected to devices {}'.format(connect))
             if noconnect:
@@ -201,11 +216,26 @@ class Topology(TestbedCreator):
             # Configure these connected devices
             if dev_man.config:
                 log.info('   Configuring Testbed devices cdp and lldp protocol')
+                
+                log.debug('--------DEBUG LOGS START-------')
                 dev_man.configure_testbed_cdp_protocol()
                 dev_man.configure_testbed_lldp_protocol()
+                log.debug('--------RESUME CONSOLE LOGS--------')
+                time.sleep(5)
+                
+                if dev_man.cdp_configured:
+                    log.info('     cdp was configured for devices {}'.format(dev_man.cdp_configured))
+                else:
+                    log.info('     cdp was not configured on any device')
+                if dev_man.lldp_configured:
+                    log.info('     lldp was configured for devices {}'.format(self.lldp_configured))
+                else:
+                    log.info('     lldp was not configured on any device')
 
             # Get the cdp/lldp operation data and massage it into our structure format
             log.info('   Finding neighbors information')
+            
+            log.debug('--------DEBUG LOGS START-------')
             result = dev_man.get_neigbor_data()
             connections = self.process_neighbor_data(testbed, device_list,
                                                      exclude_networks, result)
@@ -215,6 +245,7 @@ class Topology(TestbedCreator):
             # This make testbed.devices grow, add these new devices
             new_devs = self._write_devices_into_testbed(device_list, proxy_set,
                                                         credential_dict, testbed)
+            log.debug('--------RESUME CONSOLE LOGS--------')
             if new_devs:
                 log.info('     Found these new devices {} - Restarting a new discovery process'.format(new_devs))
             
@@ -224,20 +255,26 @@ class Topology(TestbedCreator):
             if self._only_links:
                 break
             count += 1
-            
+        
+        log.debug('--------DEBUG LOGS START HERE-------')
         # get IP address for interfaces
         log.debug('Get interface ip adrresses')
         pcall(dev_man.get_interfaces_ipV4_address, 
               device = testbed.devices.values())
+        log.debug('--------RESUME CONSOLE LOGS--------')
 
         # unconfigure cdp and lldp on devices that were configured by script
         if self._config_discovery:
             log.info('Unconfiguring cdp and lldp protocols on configured devices')
+            
+            log.debug('--------DEBUG LOGS START HERE-------')
             pcall(dev_man.unconfigure_neighbor_discovery_protocols,
                   device= testbed.devices.values())
-            log.info('   CDP was unconfigured on {}'.format(dev_man.cdp_configured))
-            log.info('   LLDP was unconfigured on {}'.format(dev_man.lldp_configured))
-            time.sleep(5)
+            log.debug('--------RESUME CONSOLE LOGS--------')
+            if dev_man.cdp_configured:
+                log.info('   CDP was unconfigured on {}'.format(dev_man.cdp_configured))
+            if dev_man.lldp_configured:
+                log.info('   LLDP was unconfigured on {}'.format(dev_man.lldp_configured))
         
         # add the new information into testbed_yaml
         final_yaml = self.create_yaml_dict(testbed, testbed_yaml, credential_dict)
@@ -382,7 +419,12 @@ class Topology(TestbedCreator):
 
             dest_port = connection['port_id']
             interface = connection['local_interface']
-
+            
+            log.debug('     Connection device {} interface {} to'
+                      ' device {} interface {} found'.format(device_name,
+                                                             interface,
+                                                             dest_host,
+                                                             dest_port))            
             # if the name of either interface in the connection is listed in the exclude_interfaces argument,
             # skip the connection and begin checking the next connection
             if interface in self._exclude_interfaces:
@@ -457,7 +499,12 @@ class Topology(TestbedCreator):
                     log.debug('     Device {} does not exist in {}, skipping'.format(
                               dest_host, testbed.name))
                     continue
-
+                
+                log.debug('     Connection device {} interface {} to'
+                          ' device {} interface {} found'.format(device_name,
+                                                                 interface,
+                                                                 dest_host,
+                                                                 dest_port))                
                 # if the name of either interface in the connection is listed in the exclude_interfaces argument,
                 # skip the connection and begin checking the next connection
                 if interface in self._exclude_interfaces:
@@ -549,10 +596,11 @@ class Topology(TestbedCreator):
         if interface not in device_connections:
             device_connections[interface] = [new_entry]
             log.debug('     Connection device {} interface {} to'
-                      ' device {} interface {} found'.format(dev,
-                                                             interface,
-                                                             dest_host,
-                                                             dest_port))
+                      ' device {} interface {} logged to be and'
+                      'added to testebed'.format(dev,
+                                                 interface,
+                                                 dest_host,
+                                                 dest_port))
             
         # if the interface is already in the connection dict,
         # verify that the connection is unique before adding to dict
@@ -565,10 +613,11 @@ class Topology(TestbedCreator):
                     break
             else:
                 log.debug('     Connection device {} interface {} to'
-                          ' device {} interface {} found'.format(dev,
-                                                                 interface,
-                                                                 dest_host,
-                                                                 dest_port))
+                          ' device {} interface {} logged to be '
+                          'added to testebed'.format(dev,
+                                                     interface,
+                                                     dest_host,
+                                                     dest_port))
                 device_connections[interface].append(new_entry)
 
     def _write_devices_into_testbed(self, device_list, proxy_set, credential_dict, testbed):
@@ -688,6 +737,15 @@ class Topology(TestbedCreator):
         return dev_obj
     
     def validIPAddress(self, ip):
+        '''Checks that the ip address found is a valid ipv4 or ipv6
+        address
+        
+        Args:
+            ip ('str'): Ip address to validate
+            
+        Returns:
+            True if address is valid, False if not valid
+        '''
         try:
             ipaddress.ip_address(ip)
         except ValueError:
