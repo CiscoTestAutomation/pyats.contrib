@@ -96,6 +96,7 @@ class Topology(TestbedCreator):
     --cred-prompt                                  |  cred_prompt=True
     --debug-log='<log name>'                       |  debug_log = '<log name>'
     --disable-config                               |  disable_config = True
+    --telnet-connect                               |  telnet_connect = True
     """
 
     def _init_arguments(self):
@@ -118,7 +119,8 @@ class Topology(TestbedCreator):
                 'universal_login': '',
                 'cred_prompt': False,
                 'debug_log': '',
-                'disable_config': False
+                'disable_config': False,
+                'telnet_connect': False
             }
         }
 
@@ -444,6 +446,9 @@ class Topology(TestbedCreator):
             int_set = {ip for ip in int_address}
             mgmt_set = {ip for ip in mgmt_address}
 
+            os = self.get_os(connection['software_version'],
+                             connection['platform'])
+
             # if the ip addresses for the connection are in the range given
             # by the cli, do not log the connection and proceed to next entry
             stop = False
@@ -464,7 +469,7 @@ class Topology(TestbedCreator):
 
             # Add the connection information to the device_connections and destination device information to the device_list
             self.add_to_device_list(device_list, dest_host, dest_port, int_set, mgmt_set,
-                                    device_name)
+                                    device_name, os)
             self.add_to_device_connections(device_connections, dest_host, dest_port, interface, device_name)
 
     def _process_lldp_information(self, result, device_name, device_list, exclude_networks , testbed, device_connections):
@@ -524,6 +529,8 @@ class Topology(TestbedCreator):
                 if ip_address is None:
                     ip_address = neighbor.get('management_address_v4')
 
+                os = self.get_os(neighbor['system_description'], '')
+
                 # if the ip addresses for the connection are in the range given
                 # by the cli, do not log the connection and move on
                 if ip_address is not None and exclude_networks :
@@ -540,11 +547,32 @@ class Topology(TestbedCreator):
 
                 # Add the connection information to the device_connections and destination device information to the device_list
                 self.add_to_device_list(device_list, dest_host, dest_port,
-                                        set(), {ip_address}, device_name)
+                                        set(), {ip_address}, device_name, os)
                 self.add_to_device_connections(device_connections, dest_host, dest_port, interface, device_name)
 
+    def get_os(self, system_string, platform_name):
+        '''Get the os from the system_description output from the show
+        cdp and show lldp neighbor parsers
+        Args:
+            system_string ('str'): possible location for os name
+            platform_name ('str'): possible location for os name
+        Return:
+            returns os as string or None
+        '''
+        if 'IOS' in system_string or 'IOS' in platform_name:
+            if 'XE' in system_string or 'XE' in platform_name:
+                return 'iosxe'
+            elif 'XR' in system_string or 'XR' in platform_name:
+                return 'iosxr'
+            else:
+                return 'ios'
+        if 'NX-OS' in system_string or 'NX-OS' in platform_name:
+            return 'nxos'
+        # So that None value will not be entered into
+        return 'DUMMY'
+
     def add_to_device_list(self, device_list, dest_host,
-                           dest_port, int_address, mgmt_address, discover_name):
+                           dest_port, int_address, mgmt_address, discover_name, os):
         '''Add the information needed to create the device in the
         testbed later to the specified list
 
@@ -556,6 +584,7 @@ class Topology(TestbedCreator):
             int_address ('set'): set of ip addresses found under int ip header for device
             mgmt_address ('set'): set of ip addresses found under mgmt ip header for device
             discover_name ('str'): the name of the device that discovered dest_host
+            os ('str'): the os of the device
         '''
         # if the interface addresses is the same as the mgmt adresses
         # assume the adress is a managment IP and remove the address
@@ -566,7 +595,8 @@ class Topology(TestbedCreator):
         if dest_host not in device_list:
             device_list[dest_host] = {'ports': {dest_port},
                                       'ip':mgmt_address,
-                                      'finder': (discover_name, int_address)}
+                                      'finder': (discover_name, int_address),
+                                      'os': os}
 
         # if the device already exists in the device list, add the new interfaces
         # and ip addresses to the list
@@ -596,7 +626,7 @@ class Topology(TestbedCreator):
         if interface not in device_connections:
             device_connections[interface] = [new_entry]
             log.debug('     Connection device {} interface {} to'
-                      ' device {} interface {} logged to be and'
+                      ' device {} interface {} logged and to be'
                       'added to testebed'.format(dev,
                                                  interface,
                                                  dest_host,
@@ -613,7 +643,7 @@ class Topology(TestbedCreator):
                     break
             else:
                 log.debug('     Connection device {} interface {} to'
-                          ' device {} interface {} logged to be '
+                          ' device {} interface {} logged and to be '
                           'added to testebed'.format(dev,
                                                      interface,
                                                      dest_host,
@@ -696,6 +726,11 @@ class Topology(TestbedCreator):
         finder = device_data['finder']
         finder_dev = testbed.devices[finder[0]]
         credentials = finder_dev.credentials
+
+        if self._telnet_connect:
+            protocol = 'telnet'
+        else:
+            protocol = 'ssh'
         
         if self._cred_prompt:
             credentials = self._prompt_credentials(device_name)
@@ -705,9 +740,12 @@ class Topology(TestbedCreator):
             if self.validIPAddress(ip):
                 for proxy in proxy_set:
                     # create connection using possible proxies
-                    connections['ssh' + proxy] = {'protocol': 'ssh',
-                                                  'ip': ip,
-                                                  'proxy': proxy}
+                    connections[proxy] = {'protocol': protocol,
+                                          'ip': ip,
+                                          'proxy': proxy}
+                connections['default'] = {'protocol': protocol,
+                                          'ip': ip}
+
 
         # if there is an interface ip, create a proxy connection
         # using the discovery device
@@ -715,13 +753,13 @@ class Topology(TestbedCreator):
             for ip in device_data['finder'][1]:
                 finder_proxy = self.write_proxy_chain(
                                 finder[0], testbed, credentials, ip)
-                connections['finder_proxy'] = {'protocol': 'ssh',
+                connections['finder_proxy'] = {'protocol': protocol,
                                                'ip': ip,
                                                'proxy': finder_proxy}
 
         # create the new device
         dev_obj = Device(device_name,
-                    os= 'DUMMY',
+                    os= device_data['os'],
                     credentials=credentials,
                     type='device',
                     connections=connections,

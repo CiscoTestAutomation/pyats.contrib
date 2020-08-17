@@ -292,16 +292,19 @@ class TestbedManager(object):
         try:
             cdp = device.api.get_cdp_neighbors_info()
         except Exception as e:
-            log.error("     Exception occurred getting cdp info")
+            log.error("     Exception occurred getting cdp info for {}".format(device.name))
             log.debug(e)
+        if cdp is None:
+            log.debug("     No CDP information found on {}".format(device.name))
 
         # get the devices lldp neighbor information
         try:
             lldp = device.api.get_lldp_neighbors_info()
         except Exception as e:
-            log.error("     Exception occurred getting lldp info")
+            log.error("     Exception occurred getting lldp info for {}".format(device.name))
             log.debug(e)
-
+        if lldp is None:
+            log.debug("     No LLDP information found on {}".format(device.name))
         log.debug('     Got cdp and lldp neighbor info for {}'.format(device.name))
         return {device.name: {'cdp':cdp, 'lldp':lldp}}
 
@@ -361,11 +364,12 @@ class TestbedManager(object):
         for device in yaml['devices'].values():
             
             # get all connections used in the testbed
-            for cred in device['credentials']:
-                if cred not in credential_dict :
-                    credential_dict[cred] = dict(device['credentials'][cred])
-                elif device['credentials'][cred] not in credential_dict.values():
-                    credential_dict[cred + str(len(credential_dict))] = dict(device['credentials'][cred])
+            if 'credentials' in device:
+                for cred in device['credentials']:
+                    if cred not in credential_dict :
+                        credential_dict[cred] = dict(device['credentials'][cred])
+                    elif device['credentials'][cred] not in credential_dict.values():
+                        credential_dict[cred + str(len(credential_dict))] = dict(device['credentials'][cred])
 
             # get list of proxies used in connections
             for connect in device['connections'].values():
