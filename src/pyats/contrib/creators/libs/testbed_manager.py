@@ -343,7 +343,10 @@ class TestbedManager(object):
             return
         for interface in device.interfaces.values():
             if interface.ipv4 is None:
-                ip = device.api.get_interface_ipv4_address(interface.name, )
+                try:
+                    ip = device.api.get_interface_ipv4_address(interface.name, )
+                except Exception:
+                    ip = None
                 if ip:
                     ip = ipaddress.IPv4Interface(ip)
                     interface.ipv4 = ip

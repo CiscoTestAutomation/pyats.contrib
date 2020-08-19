@@ -569,7 +569,7 @@ class Topology(TestbedCreator):
         if 'NX-OS' in system_string or 'NX-OS' in platform_name:
             return 'nxos'
         # So that None value will not be entered into
-        return 'DUMMY'
+        return 'LEARN_OS'
 
     def add_to_device_list(self, device_list, dest_host,
                            dest_port, int_address, mgmt_address, discover_name, os):
@@ -926,16 +926,18 @@ class Topology(TestbedCreator):
                                                        }
                 conn_dict = testbed_yaml['devices'][device.name]['connections']
                 for connect in device.connections:
-                    if connect == 'finder_proxy':
+                    if connect == 'finder_proxy' or connect == 'defaults':
                         continue
                     ip = device.connections[connect].get('ip')
                     protocol = device.connections[connect].get('protocol')
                     proxy = device.connections[connect].get('proxy')
                     conn_dict[connect] = {'protocol':protocol,
-                                          'ip': ip,
-                                          'proxy': proxy
+                                          'ip': ip
                                          }
-                conn_dict['defaults'] = {'via':connect}
+                    if proxy:
+                        conn_dict[connect]['proxy'] = proxy
+                if 'default' in conn_dict:
+                    conn_dict['defaults'] = {'via':'default'}
 
             # write in the interfaces and link from devices into testbed
             interface_dict = {'interfaces': {}}
