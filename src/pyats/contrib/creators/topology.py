@@ -453,13 +453,13 @@ class Topology(TestbedCreator):
             # by the cli, do not log the connection and proceed to next entry
             stop = False
             for ip, net in product(int_set, exclude_networks ):
-                if ipaddress.IPv4Address(ip) in net:
+                if self.validIPAddress(ip) and ipaddress.IPv4Address(ip) in net:
                     log.debug('     IP {ip} found in'
                               'exclude network {net}, skipping connection'.format(ip=ip, net=net))
                     stop = True
                     break
             for ip, net in product(mgmt_set, exclude_networks ):
-                if ipaddress.IPv4Address(ip) in net:
+                if self.validIPAddress(ip) and ipaddress.IPv4Address(ip) in net:
                     log.debug('     IP {ip} found in'
                               'exclude network {net}'.format(ip=ip, net=net))
                     stop = True
@@ -536,10 +536,10 @@ class Topology(TestbedCreator):
                 if ip_address is not None and exclude_networks :
                     stop = False
                     for net in exclude_networks :
-                        if ipaddress.IPv4Address(ip_address) in net:
+                        if self.validIPAddress(ip_address) and ipaddress.IPv4Address(ip_address) in net:
                             log.debug('     IP {ip} found in exclude '
-                                      'network {net}'.format(ip=ip_address,
-                                                             net=net))
+                                    'network {net}'.format(ip=ip_address,
+                                                            net=net))
                             stop = True
                             break
                     if stop:
@@ -775,7 +775,7 @@ class Topology(TestbedCreator):
         return dev_obj
     
     def validIPAddress(self, ip):
-        '''Checks that the ip address found is a valid ipv4 or ipv6
+        '''Checks that the ip address found is a valid ipv4
         address
         
         Args:
@@ -785,7 +785,7 @@ class Topology(TestbedCreator):
             True if address is valid, False if not valid
         '''
         try:
-            ipaddress.ip_address(ip)
+            ipaddress.IPv4Address(ip)
         except ValueError:
             return False
         else:
@@ -888,8 +888,10 @@ class Topology(TestbedCreator):
                         dest_int = entry['dest_port']
                         if testbed.devices[dev].interfaces[dest_int] not in int_list:
                             int_list.append(testbed.devices[dev].interfaces[dest_int])
-                    link = Link('Link_{num}'.format(num=len(testbed.links)),
-                                interfaces=int_list)
+                    if len(int_list)>1:
+                        link = Link('Link_{num}'.format(num=len(testbed.links)),
+                                    interfaces=int_list)
+                    
 
                 # if the interface is already part of the link go over the
                 # other interfaces found in the connection_dict and add them to the link

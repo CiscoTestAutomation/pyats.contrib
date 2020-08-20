@@ -96,7 +96,7 @@ class TestbedManager(object):
                 except Exception as e:
                     log.debug('     Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                     log.debug('     {}'.format(e))
-                    self.testbed.devices[device].destroy()
+                    self.testbed.devices[device].destroy(str(one_connect))
                 else:
                     
                     # No exception raised - get out
@@ -123,7 +123,7 @@ class TestbedManager(object):
                     log.debug('     Failed to connect to {name} using connection {conn}'.format(name = device, conn = one_connect))
                     log.debug('     {}'.format(e))                    
                     # if connection fails, erase the connection from connection mgr
-                    self.testbed.devices[device].destroy()
+                    self.testbed.devices[device].destroy(str(one_connect))
                 continue
 
             # if ssh only is enabled, check if the connection protocol is ssh before trying to connect
@@ -141,7 +141,7 @@ class TestbedManager(object):
                     # if connection fails, erase the connection from connection mgr
                     log.debug('     Failed to connect to {name} using connection {conn}'.format(name = device, conn = one_connect))
                     log.debug('     {}'.format(e))   
-                    self.testbed.devices[device].destroy()
+                    self.testbed.devices[device].destroy(str(one_connect))
         
         if not self.testbed.devices[device]:
             log.debug('     Failed to connect to {}'.format(device))
