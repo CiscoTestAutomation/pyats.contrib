@@ -31,6 +31,8 @@ The topology creator also has a variety of options as listed below
 
 - disable-config: If true, the script will not run config commands on devices that it connects to
 
+- telnet-connect: Create connection to new devices as telnet connections instead of ssh connections
+
 ## Examples
 ### Discovering only Links Between Existing Devices
 By staring with a testbed file and running the following command:
