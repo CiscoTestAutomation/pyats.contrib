@@ -96,7 +96,7 @@ class TestbedManager(object):
                 except Exception as e:
                     log.debug('     Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
                     log.debug('     {}'.format(e))
-                    self.testbed.devices[device].destroy(str(one_connect))
+                    self.testbed.devices[device].destroy(str(self.alias_dict[device]))
                 else:
                     
                     # No exception raised - get out
