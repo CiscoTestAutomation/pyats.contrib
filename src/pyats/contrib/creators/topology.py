@@ -230,7 +230,7 @@ class Topology(TestbedCreator):
                 else:
                     log.info('     cdp was not configured on any device')
                 if dev_man.lldp_configured:
-                    log.info('     lldp was configured for devices {}'.format(self.lldp_configured))
+                    log.info('     lldp was configured for devices {}'.format(dev_man.lldp_configured))
                 else:
                     log.info('     lldp was not configured on any device')
 
