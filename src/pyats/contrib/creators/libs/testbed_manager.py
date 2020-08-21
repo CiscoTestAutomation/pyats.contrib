@@ -78,7 +78,10 @@ class TestbedManager(object):
         Args:
             device ('str'): name of device being connected
         '''
-
+        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+            to_stdout = True
+        else:
+            to_stdout = False
         # if there is a prefered alias for the device, attempt to connect with device
         # using that alias, if the attempt fails or the alias doesn't exist, it will
         # attempt to connect with the default
@@ -88,14 +91,13 @@ class TestbedManager(object):
                 try:
                     self.testbed.devices[device].connect(via = str(self.alias_dict[device]),
                                                          connection_timeout=self.timeout,
-                                                         log_stdout=False,
+                                                         log_stdout=to_stdout,
                                                          logfile = self.logfile,
                                                          learn_os = True,
                                                          init_config_commands = self.disable_config)
                     log.debug('     Connected to device {}'.format(device))
                 except Exception as e:
                     log.debug('     Failed to connect to {} with alias {}'.format(device, self.alias_dict[device]))
-                    log.debug('     {}'.format(e))
                     self.testbed.devices[device].destroy(str(self.alias_dict[device]))
                 else:
                     
@@ -113,15 +115,14 @@ class TestbedManager(object):
                 try:
                     self.testbed.devices[device].connect(via = str(one_connect),
                                                          connection_timeout=self.timeout,
-                                                         log_stdout=False,
+                                                         log_stdout=to_stdout,
                                                          logfile = self.logfile,
                                                          learn_os = True,
                                                          init_config_commands = self.disable_config)
                     log.debug('     Connected to device {}'.format(device))
                     break
                 except Exception as e:
-                    log.debug('     Failed to connect to {name} using connection {conn}'.format(name = device, conn = one_connect))
-                    log.debug('     {}'.format(e))                    
+                    log.debug('     Failed to connect to {name} using connection {conn}'.format(name = device, conn = one_connect))                   
                     # if connection fails, erase the connection from connection mgr
                     self.testbed.devices[device].destroy(str(one_connect))
                 continue
@@ -131,7 +132,7 @@ class TestbedManager(object):
                 try:
                     self.testbed.devices[device].connect(via=str(one_connect),
                                                          connection_timeout=self.timeout,
-                                                         log_stdout=False,
+                                                         log_stdout=to_stdout,
                                                          logfile = self.logfile,
                                                          learn_os = True,
                                                          init_config_commands = self.disable_config)
@@ -140,7 +141,6 @@ class TestbedManager(object):
                 except Exception as e:
                     # if connection fails, erase the connection from connection mgr
                     log.debug('     Failed to connect to {name} using connection {conn}'.format(name = device, conn = one_connect))
-                    log.debug('     {}'.format(e))   
                     self.testbed.devices[device].destroy(str(one_connect))
         
         if not self.testbed.devices[device]:
@@ -344,7 +344,7 @@ class TestbedManager(object):
         for interface in device.interfaces.values():
             if interface.ipv4 is None:
                 try:
-                    ip = device.api.get_interface_ipv4_address(interface.name, )
+                    ip = device.api.get_interface_ipv4_address(interface.name )
                 except Exception:
                     ip = None
                 if ip:
