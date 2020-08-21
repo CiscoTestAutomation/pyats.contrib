@@ -1,7 +1,7 @@
 # This is in BETA mode - Only use this on your lab devices
 # Device Discovery
 
-![Device Discovery Diagram](./img/DDdiagram.png)
+![Device Discovery Diagram](./img/DDDdiagram.png)
 
 *pyATS create testbed topology* takes a testbed yaml file provided by the user that contains at least one device that can be connected to and then the creator will discover all the devices and device connections using CDP and LLDP  and then return the information in a new  testbed yaml file. The script also contains a mode that avoids discovering new devices and just reports connections between the devices already in the testbed. 
 
