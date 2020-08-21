@@ -31,12 +31,16 @@ creator_logger = logging.getLogger(creator)
 creator_logger.propagate = False
 creator_logger.setLevel(logging.DEBUG)
 sh = ScreenHandler()
+
+# sets level to root loggers level in case -v is used so all info will be displayed on console
 sh.setLevel(logging.getLogger().getEffectiveLevel())
 creator_logger.addHandler(sh)
 
 log = logging.getLogger(__name__)
 
-SUPPORTED_OS = {'nxos', 'iosxr', 'iosxe', 'ios','DUMMY'}
+# list of OSes that the script can work with and a dummy name to be used with LEARN_OS
+# connection feature
+SUPPORTED_OS = {'nxos', 'iosxr', 'iosxe', 'ios','LEARN_OS'}
 
 
 class Topology(TestbedCreator):
@@ -132,7 +136,6 @@ class Topology(TestbedCreator):
         Returns:
             dict: The intermediate dictionary format of the testbed data.
         """
-
         if self._debug_log:
             log_file = self.create_debug_log()
         else:
@@ -303,7 +306,7 @@ class Topology(TestbedCreator):
             Name of logfile that information will be written to
         '''
         
-        # Make sure the log file will be unique
+        # If the logfile already exists, delete the old log file
         if os.path.exists(self._debug_log):
             os.remove(self._debug_log)
         logfile = self._debug_log
@@ -313,7 +316,7 @@ class Topology(TestbedCreator):
         fh.setLevel(logging.DEBUG)
         creator_logger.addHandler(fh)
         
-        #to capture -v information into the log
+        #to capture -v information into the log file
         logging.getLogger().addHandler(fh)
         
         return logfile

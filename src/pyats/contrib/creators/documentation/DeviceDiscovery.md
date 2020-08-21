@@ -1,3 +1,4 @@
+# This is in BETA mode - Only use this on your lab devices
 # Device Discovery
 
 ![Device Discovery Diagram](./img/DDdiagram.png)
@@ -42,7 +43,7 @@ By staring with a testbed file and running the following command:
     2020-08-13T14:56:06: %CONTRIB-INFO: Testbed file generated:
     2020-08-13T14:56:06: %CONTRIB-INFO: result.yaml
 This will take the initial testbed yaml file and generate a new yaml file called result.yaml with the originals information with the topology information added on
-![Device Discovery Diagram](./img/DDonlylinks.png)
+![Link Discovery Example](./img/DDonlylinks.png)
 
 ### Device Discovery:
 By default the topology creator will search for new devices and add them to the  testbed
@@ -52,7 +53,7 @@ By default the topology creator will search for new devices and add them to the 
     2020-08-13T14:56:06: %CONTRIB-INFO: Testbed file generated:
     2020-08-13T14:56:06: %CONTRIB-INFO: result.yaml
 This will generate a new testbed with the newly discovered devices added in
-![Device Discovery Diagram](./img/DDdiscovery.png)
+![Device Discovery Example](./img/DDdiscovery.png)
 
 ### Device Discovery with user input options:
 With these flages enabled it will allow the system to enable CDP and LLDP on devices to make sure the creator finds all connections on the devices. Also enabled is manual credential entry and creation of a debug log
@@ -74,4 +75,48 @@ With these flages enabled it will allow the system to enable CDP and LLDP on dev
     2020-08-13T14:56:06: %CONTRIB-INFO: Debug log generated: debug.log
     2020-08-13T14:56:06: %CONTRIB-INFO: Testbed file generated:
     2020-08-13T14:56:06: %CONTRIB-INFO: result.yaml
-![asdasd](./img/DDconfigcred.png)
+![Full Prompt Example](./img/DDconfigcred.png)
+
+## Continuing Work
+
+### Existing Limitations
+- Arguments with - need to be assigned to argument with equal sign EX: 
+
+        --testbed-file test-bed.yaml 
+    will not work, but 
+    
+        --testbed-file=test-bed.yaml 
+    will work
+
+- if the script finds numerous IP addresses to connect to a device it will attempt to connect with all of them, this can lead to long amounts of time spent connecting to devices
+- exclude networks is only tested to work with ipV4 addresses, no data for performance with ipV6 addreses is known
+- Can use devices with only telnet connections as proxies
+- Script has only been tested  to work with devices that have telnet and ssh connections
+- Arguments need to be entered with spaces int them need to have ' ' surounding them IE: 
+        
+        --exlcude-interfaces arg1 arg2
+    will only parse arg1 while
+
+        --exclude-interfaces 'arg1 arg2'
+    will parse both
+- Script will not find IPv6 address for interfaces
+- Script will not retest devices after one set of connection attempts (IE if correct connection info for a device after it's connection attenpt, it won't be used)
+- If the script sees an IP address listed as an interface address and a mgmt address, it will treat it as a mgmt ip address only
+- currently parsers tend to report most ip addresss found as mgmt addresses even if they are not so alot of interface addresses are falsely reported as mgmt addresses
+
+### Further testing required for features
+- add-unconnected-interfaces
+- disable-config
+- telnet-connect
+- exclude-networks (with IPv6 networks)
+- timeout
+- Test on physical devices
+- ssh-only in conjunction with telnet-connection
+- performance with low timeout times
+- performance with making connections interface ip addresses
+- Test on devices without telnet and ssh connections 
+
+
+### To Develop (not needed)
+- make code compatible for working with IPv6 addresses (edit apis to get IPv6 Address for interfaces and)
+- Find way to make connection attempts faster (currently the script has to destroy the connection after each connection attempt and that adds alot of time)

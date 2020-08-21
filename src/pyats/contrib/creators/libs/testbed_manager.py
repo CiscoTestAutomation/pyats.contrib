@@ -78,10 +78,14 @@ class TestbedManager(object):
         Args:
             device ('str'): name of device being connected
         '''
+        # when -v is used root logger effective level will be set to debug so
+        # script will set st_out for devices to true so device data will be sent ton
+        # console
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             to_stdout = True
         else:
             to_stdout = False
+            
         # if there is a prefered alias for the device, attempt to connect with device
         # using that alias, if the attempt fails or the alias doesn't exist, it will
         # attempt to connect with the default
