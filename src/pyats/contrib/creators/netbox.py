@@ -19,12 +19,25 @@ class Netbox(TestbedCreator):
             profile and in the API Tokens tab.
         encode_password (bool) default=False: Should generated testbed encode 
             its passwords.
+        topology (bool) default=False: Do not generate topology data by default, #TODO fix links
+        verify (bool) default=True: Should requests library validate SSL cert for netbox
+        url_filter ('str') default=None: Netbox URL filter string, example: 'status=active&site=test_site'
+        def_user ('str') default=None: Set the username for all devices
+        def_pass ('str') default=None: Set the password for all devices
+        host_upper (bool) default=False: Store hostname in upper case (to match the prompt)
 
     CLI Argument        |  Class Argument
     ---------------------------------------------
     --netbox-url=value  |  netbox_url=value
     --user-token=value  |  user_token=value
     --encode-password   |  encode_password=True
+    --topology          |  topology=True
+    --verify=False      |  verify=False
+    --host_upper=True   |  host_upper=True
+    --url_filter=value  |  url_filter=value
+    --def_user=value    |  def_user=value
+    --def_pass=value    |  def_pass=value
+    --tag_telnet=value  |  tag_telnet=value
 
     pyATS Examples:
         pyats create testbed netbox --output=out --netbox-url=https://netbox.com
@@ -48,7 +61,14 @@ class Netbox(TestbedCreator):
         return {
             'required': ['netbox_url', 'user_token'],
             'optional': {
-                'encode_password': False
+                'encode_password': False,
+                'topology': False,
+                'verify': True,
+                'host_upper': False,
+                'url_filter': None,
+                'def_user': None,
+                'def_pass': None,
+                'tag_telnet': None
             }
         }
 
@@ -91,9 +111,9 @@ class Netbox(TestbedCreator):
             response = None
 
             if not headers:
-                response = requests.get(url)
+                response = requests.get(url, verify=self._verify)
             else:
-                response = requests.get(url, headers=headers)
+                response = requests.get(url, headers=headers, verify=self._verify)
             
             return self._parse_response(response, return_property)
         except:
@@ -163,7 +183,7 @@ class Netbox(TestbedCreator):
             cannot be found in list of valid types.
     
         """
-        valid_types = ["ethernet", "loopback"]
+        valid_types = ["ethernet", "loopback", "vlan"]
 
         for valid in valid_types:
             if interface_type and valid in interface_type:
@@ -212,8 +232,13 @@ class Netbox(TestbedCreator):
         headers = { "Authorization": token }
         data = {}
         topology = {}
-        devices_url = self._format_url(self._netbox_url, 
-                                                "api/dcim/devices/?format=json")
+
+        if self._url_filter is None:
+            url=f"api/dcim/devices/?format=json"
+        else:
+            url=f"api/dcim/devices/?format=json&{self._url_filter}"
+
+        devices_url = self._format_url(self._netbox_url, url)
         response = self._get_request(devices_url, headers, "results")
 
         # If no response is received for retrieving a list of devices, stop
@@ -223,7 +248,12 @@ class Netbox(TestbedCreator):
 
         for device in response:
             is_valid = True
-            device_name = device["display_name"]
+
+            if self._host_upper is True:
+                device_name = device["display_name"].upper()
+            else:
+                device_name = device["display_name"]
+
             logger.info("Retrieving associated data for {}..."
                                                         .format(device_name))
             device_id = device["id"]
@@ -252,8 +282,13 @@ class Netbox(TestbedCreator):
             ], mask_filter)
             found_ip = False
 
+            if self._tag_telnet is not None and self._tag_telnet in device['tags']:
+                protocol='telnet'
+            else:
+                protocol='ssh'
+
+            cli.setdefault("protocol", protocol)
             # Attempt to set connection protocol to primary IP, if found
-            cli.setdefault("protocol", "ssh")
             found_ip |= self._set_value_if_exists(cli, "ip", self._get_info(
                             device, ["primary_ip4", "address"], mask_filter))
             found_ip |= self._set_value_if_exists(cli, "ip",
@@ -277,60 +312,66 @@ class Netbox(TestbedCreator):
                     "ip": ipv6, "protocol": "ssh"
                 })
             
-            # Send request for interfaces
-            interface_url = self._format_url(self._netbox_url, 
-                "api/dcim/interfaces/?device_id={}&format=json".format(
-                                                                    device_id))
-            interface_response = self._get_request(interface_url, headers, 
-                                                                    "results")
+            # TODO Link is required for topology, need to implement
+            if self._topology is True:
+                # Send request for interfaces
+                interface_url = self._format_url(self._netbox_url, 
+                    "api/dcim/interfaces/?device_id={}&format=json".format(
+                                                                        device_id))
+                interface_response = self._get_request(interface_url, headers, 
+                                                                        "results")
 
-            # If no interface response are received, we skip the device
-            if not interface_response:
-                logger.warning(
-                    "No interface found for {}. ".format(device_name) +
-                    "Skipping device..."
-                )
+                # If no interface response are received, we skip the device
+                if not interface_response:
+                    logger.warning(
+                        "No interface found for {}. ".format(device_name) +
+                        "Skipping device..."
+                    )
 
-                # Delete device data from testbed
-                del data[device_name]
-                continue
-            
-            # Initialize interface data
-            interfaces = topology.setdefault(device_name, {
-                 "interfaces": {} 
-            })["interfaces"]
-
-            for interface in interface_response:
-                interface_name = interface["name"]
-                interface_id = interface["id"]
-                current = interfaces.setdefault(interface_name, {})
-
-                current.setdefault("alias", "{}_{}"
-                                        .format(device_name, interface_name))
-                self._set_value_if_exists(current, "type", 
-                                    self._format_type(interface_name.lower()))
-
-                # Attempt to retrieve IP for each interface
-                ip_url = self._format_url(self._netbox_url,
-                    "api/ipam/ip-addresses/?interface_id={}&format=json"
-                                                        .format(interface_id))
-                ip_response = self._get_request(ip_url, headers, "results")
-
-                # If no response for IP retrieval then we skip this interface
-                if not ip_response:
+                    # Delete device data from testbed
+                    del data[device_name]
                     continue
+                
+                # Initialize interface data
+                interfaces = topology.setdefault(device_name, {
+                    "interfaces": {} 
+                })["interfaces"]
 
-                for ip_address in ip_response:
-                    # If we have not found primary IP for the device, set it to
-                    # the first interface IP we see
-                    if not found_ip:
-                        cli.setdefault("ip", mask_filter(ip_address["address"]))
+                for interface in interface_response:
+                    interface_name = interface["name"]
+                    interface_id = interface["id"]
+                    current = interfaces.setdefault(interface_name, {})
 
-                        found_ip = True
-                    
-                    # Correctly set IP information on interface data
-                    family = "ipv4" if "." in ip_address["address"] else "ipv6"
-                    current.setdefault(family, ip_address["address"])
+                    current.setdefault("alias", "{}_{}"
+                                            .format(device_name, interface_name))
+                    self._set_value_if_exists(current, "type", 
+                                        self._format_type(interface_name.lower()))
+                    if current.get('type') is None:
+                        logger.info(f"{device_name} interface {interface_name.lower()} is not valid, skipping")
+                        del interfaces[interface_name]
+                        continue
+
+                    # Attempt to retrieve IP for each interface
+                    ip_url = self._format_url(self._netbox_url,
+                        "api/ipam/ip-addresses/?interface_id={}&format=json"
+                                                            .format(interface_id))
+                    ip_response = self._get_request(ip_url, headers, "results")
+
+                    # If no response for IP retrieval then we skip this interface
+                    if not ip_response:
+                        continue
+
+                    for ip_address in ip_response:
+                        # If we have not found primary IP for the device, set it to
+                        # the first interface IP we see
+                        if not found_ip:
+                            cli.setdefault("ip", mask_filter(ip_address["address"]))
+
+                            found_ip = True
+                        
+                        # Correctly set IP information on interface data
+                        family = "ipv4" if "." in ip_address["address"] else "ipv6"
+                        current.setdefault(family, ip_address["address"])
 
             # If no primary IP found for this device, then we stop and skip
             if not found_ip:
@@ -341,12 +382,16 @@ class Netbox(TestbedCreator):
                 
                 del data[device_name]
                 continue
-            
-            # Request user to manually enter their credentials for each device
-            logger.info("Connection Credentials for {}:".format(device_name))
+                
+            if self._def_user is None or self._def_pass is None:
+                # Request user to manually enter their credentials for each device
+                logger.info("Connection Credentials for {}:".format(device_name))
 
-            username = input("Username: ")
-            password = input("Password: ")
+                username = input("Username: ")
+                password = input("Password: ")
+            else:
+                username = self._def_user
+                password  = self._def_pass
 
             device_data.setdefault("credentials", {
                  "default": { "username": username, "password": password }

@@ -97,9 +97,17 @@ class Ansible(TestbedCreator):
                 default = device.setdefault('credentials', {'default': {}})
                 default = default['default']
 
-                cli.setdefault('ip', host_vars[host]['ansible_host'])
-                password = None
+                # set connection ip
+                if host in host_vars and 'ansible_host' in host_vars[host]:
+                    cli.setdefault('ip', host_vars[host]['ansible_host'])
+                else:
+                    cli.setdefault('ip', host)
 
+                # set connection port
+                if 'ansible_ssh_port' in category['vars']:
+                    cli.setdefault('port', category['vars']['ansible_ssh_port'])
+
+                password = None
                 # Select the correct field name based on what is given
                 if 'ansible_ssh_pass' in category['vars']:
                     password = 'ansible_ssh_pass'
@@ -125,6 +133,10 @@ class Ansible(TestbedCreator):
 
                 # Set other device properties
                 device.setdefault('alias', host)
+
+                if 'ansible_network_os' not in category['vars']:
+                    raise Exception("Missing key word 'ansible_network_os' for %s" % host)
+
                 device.setdefault('os', category['vars']['ansible_network_os'])
                 device.setdefault('platform',
                                         category['vars']['ansible_network_os'])

@@ -29,7 +29,7 @@ def discover_creators():
 # launch setup
 setup(
     name = 'pyats.contrib',
-    version = '20.8.0',
+    version = '20.8',
 
     # descriptions
     description = 'Open source package for pyATS framework extensions.',
@@ -87,7 +87,10 @@ setup(
     keywords = 'genie pyats test automation open source contrib',
 
     entry_points={
-        'pyats.topology.loader': discover_creators()
+        'pyats.topology.loader': discover_creators(),
+        'pyats.easypy.plugins': [
+            'webex = pyats.contrib.plugins.webex:webex_plugin'
+        ]
     },
 
     # package dependencies
