@@ -71,7 +71,7 @@ class Topology(TestbedCreator):
                     default behavior is that device discovery will be done
         alias ('str'): takes argument in format device:alias device2:alias2 and
                 and indicates which alias should be used to connect to the
-                device first, default behavior has no prefered alias
+                device first, default behavior has no preferred alias
         ssh-only ('bool'): if True the script will only attempt to use ssh connections
                 to connect to devices, default behavior is to use all connections
         timeout ('int'): How long before connection and verification attempts time out.
@@ -270,7 +270,7 @@ class Topology(TestbedCreator):
         
         log.debug('--------DEBUG LOGS-------')
         # get IP address for interfaces
-        log.debug('Get interface ip adrresses')
+        log.debug('Get interface ip addresses')
         pcall(dev_man.get_interfaces_ipV4_address, 
               device = testbed.devices.values())
         log.debug('--------CONSOLE LOGS--------')
@@ -444,7 +444,7 @@ class Topology(TestbedCreator):
                           dest_port))
                 continue
 
-            # get the managment and interface addresses for the neighboring device
+            # get the management and interface addresses for the neighboring device
             mgmt_address = connection.get('management_addresses', [])
             int_address = connection.get('interface_addresses', [])
             int_set = {ip for ip in int_address}
@@ -527,7 +527,7 @@ class Topology(TestbedCreator):
                               ' skipping connection'.format(dest_port))
                     continue
 
-                # get the managment addresses for the neighboring device
+                # get the management addresses for the neighboring device
                 neighbor = port_list[dest_port]['neighbors'][neighbor_dev]
                 ip_address = neighbor.get('management_address')
                 if ip_address is None:
@@ -590,8 +590,8 @@ class Topology(TestbedCreator):
             discover_name ('str'): the name of the device that discovered dest_host
             os ('str'): the os of the device
         '''
-        # if the interface addresses is the same as the mgmt adresses
-        # assume the adress is a managment IP and remove the address
+        # if the interface addresses is the same as the mgmt addresses
+        # assume the address is a management IP and remove the address
         # from the interface address set
         int_address.difference_update(mgmt_address)
 
@@ -630,7 +630,7 @@ class Topology(TestbedCreator):
             device_connections[interface] = [new_entry]
             log.debug('     Connection device {} interface {} to'
                       ' device {} interface {} logged and to be '
-                      'added to testebed'.format(dev,
+                      'added to testbed'.format(dev,
                                                  interface,
                                                  dest_host,
                                                  dest_port))
@@ -647,7 +647,7 @@ class Topology(TestbedCreator):
             else:
                 log.debug('     Connection device {} interface {} to'
                           ' device {} interface {} logged and to be '
-                          'added to testebed'.format(dev,
+                          'added to testbed'.format(dev,
                                                      interface,
                                                      dest_host,
                                                      dest_port))
@@ -694,7 +694,7 @@ class Topology(TestbedCreator):
                           'being added to testbed'.format(device_name))
                 new_dev = self.create_new_device(testbed, device_list[device_name], proxy_set, device_name)
                 testbed.add_device(new_dev)
-                log.debug('   Device {} has been sucessfully '
+                log.debug('   Device {} has been successfully '
                           'added to testbed'.format(device_name))
                 new_devs.add(device_name)
 
@@ -752,7 +752,7 @@ class Topology(TestbedCreator):
         
         if self._cred_prompt:
             credentials = self._prompt_credentials(device_name)
-        # create connections for the managment addresses in the device list
+        # create connections for the management addresses in the device list
         for count,ip in enumerate(device_data['ip']):
             
             if self.validIPAddress(ip):
@@ -833,7 +833,7 @@ class Topology(TestbedCreator):
         
     def write_proxy_chain(self, finder_name, testbed, credentials, ip):
         '''creates a set of proxies for ssh connections, creating a set of
-        commands if there are mutiple proxies involved
+        commands if there are multiple proxies involved
 
         Args:
             finder_name ('str'): name of device being used as proxy
@@ -936,7 +936,7 @@ class Topology(TestbedCreator):
 
         Args:
             testbed ('testbed'): testbed whose devices and connections are added
-            testbed_yaml ('dict'): exisiting yaml file that will have the new data added to it
+            testbed_yaml ('dict'): existing yaml file that will have the new data added to it
             credential_dict ('dict'): dictionary of device credentials
         '''
         log.debug('Creating dictionary based on testbed')
@@ -987,7 +987,7 @@ class Topology(TestbedCreator):
             testbed_yaml['topology'] = yaml_dict['topology']
             return testbed_yaml
 
-        #if testbed has exsiting topology only add new or changed information
+        #if testbed has existing topology only add new or changed information
         for device in yaml_dict['topology']:
             if device not in testbed_yaml['topology']:
                 testbed_yaml['topology'][device] = yaml_dict['topology'][device]

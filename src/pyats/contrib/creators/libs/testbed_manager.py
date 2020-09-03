@@ -10,7 +10,7 @@ from pyats.log import ScreenHandler
 log = logging.getLogger(__name__)
 
 class TestbedManager(object):
-    '''Class designed to handle device interactions for connecting devcices
+    '''Class designed to handle device interactions for connecting devices
        and cdp and lldp
     '''
     def __init__(self, testbed, supported_os, config=False, ssh_only=False, alias_dict={},
@@ -86,7 +86,7 @@ class TestbedManager(object):
         else:
             to_stdout = False
             
-        # if there is a prefered alias for the device, attempt to connect with device
+        # if there is a preferred alias for the device, attempt to connect with device
         # using that alias, if the attempt fails or the alias doesn't exist, it will
         # attempt to connect with the default
         if device in self.alias_dict:
@@ -338,7 +338,7 @@ class TestbedManager(object):
         '''Get the ip address for all of the generated interfaces on the give device
 
         Args:
-            device ('device'): device to get interface ip addresss for
+            device ('device'): device to get interface ip addresses for
         '''
         
         log.debug('   Getting interface ipv4 addresses for {}'.format(device.name))
