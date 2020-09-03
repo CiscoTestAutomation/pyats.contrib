@@ -47,6 +47,9 @@ class Topology(TestbedCreator):
 
     """ Topology class (TestbedCreator)
 
+    This code is part of a co-op project. Use at your own risk. We welcome any
+    enhancement, however it is not officially supported by pyATS team.
+
     Takes a yaml file given by argument testbed_file and attempts to connect
     to each device in the testbed and discover the devices connection using
     cdp and lldp and writes it to a new yaml file. Can also discover devices
