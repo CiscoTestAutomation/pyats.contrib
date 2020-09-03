@@ -1,4 +1,4 @@
-# This is in BETA mode - Only use this on your lab devices
+# This is in BETA mode - Only use this on your lab devices - This was part of a co-op project.
 # Device Discovery
 
 ![Device Discovery Diagram](./img/DD_Diagram.png)
