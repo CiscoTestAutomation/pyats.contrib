@@ -89,8 +89,9 @@ setup(
     entry_points={
         'pyats.topology.loader': discover_creators(),
         'pyats.easypy.plugins': [
-            'webex = pyats.contrib.plugins.webex:webex_plugin'
-        ]
+            'webex = pyats.contrib.plugins.webex_plugin.webex:webex_plugin',
+            'topoup = pyats.contrib.plugins.topoup_plugin.topoup:topology_up_plugin'
+        ],
     },
 
     # package dependencies

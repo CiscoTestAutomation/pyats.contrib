@@ -165,7 +165,7 @@ webex_plugin = {
             'class': WebExTeamsNotifyPlugin,
             'enabled': True,
             'kwargs': {},
-            'module': 'pyats.contrib.plugins.webex',
+            'module': 'pyats.contrib.plugins.webex_plugin.webex',
             'name': 'WebExTeamsNotifyPlugin'
         }
     }
