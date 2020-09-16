@@ -21,32 +21,32 @@ class TopologyUpPlugin(BasePlugin):
         grp = parser.add_argument_group('TopologyUpPlugin')
 
         if legacy_cli:
-            all_devices_up = ['-all_devices_up']
-            connection_check_timeout = ['-connection_check_timeout']
-            connection_check_interval = ['-connection_check_interval']
+            all_devices_up = ['-ignore-all-devices-up']
+            connection_check_timeout = ['-connection-check-timeout']
+            connection_check_interval = ['-connection-check-interval']
         else:
-            all_devices_up = ['--all_devices_up']
-            connection_check_timeout = ['--connection_check_timeout']
-            connection_check_interval = ['--connection_check_interval']
+            all_devices_up = ['--ignore-all-devices-up']
+            connection_check_timeout = ['--connection-check-timeout']
+            connection_check_interval = ['--connection-check-interval']
 
-        # -all_devices_up
-        # --all_devices_up
+        # -ignore-all-devices-up
+        # --ignore-all-devices-up
         grp.add_argument(*all_devices_up,
                          dest='all_devices_up',
-                         action='store_true',
-                         default=False,
+                         action="store",
+                         default = None,
                          help='Enable/Disable checking for topology up pre job execution')
 
-        # -connection_check_timeout
-        # --connection_check_timeout
+        # -connection-check-timeout
+        # --connection-check-timeout
         grp.add_argument(*connection_check_timeout,
                          dest='connection_check_timeout',
                          action='store',
                          default=120,
                          help='Total time allowed for checking devices connectivity')
 
-        # -connection_check_interval
-        # --connection_check_interval
+        # -connection-check-interval
+        # --connection-check-interval
         grp.add_argument(*connection_check_interval,
                          dest='connection_check_interval',
                          action='store',
@@ -57,9 +57,18 @@ class TopologyUpPlugin(BasePlugin):
 
 
     def pre_job(self, task):
-        '''Loop over all the topology devices and make sure they are up and running
-           before executing the test script.
+        '''Try to connect to all the topology devices in parallel and make sure they
+           are up and running before executing the test script.
         '''
+
+        # Check for the argument controlling the plugin run
+        ignore_devices_up = self.runtime.args.all_devices_up
+
+        if ignore_devices_up:
+            log.info("TopologyUp Plugin is disabled, '--ignore-all-devices-up' must be set to True"
+                     "in case of pyats runs or '-ignore-all-devices-up' set to True in case of legacy"
+                     "easypy runs")
+            return
 
         # Set the timers
         start_time = time()
@@ -69,7 +78,7 @@ class TopologyUpPlugin(BasePlugin):
         log.info("Connectivity check timeout is '{timeout}' and "
             "connectivity check interval is '{interval}'".format(timeout=timeout, interval=interval))
 
-        # Looping over devices and make sure they are up
+        # Trying to connect to all devices in parallel
         pcall_output = pcall(device_connect,
             ckwargs = {'start_time': start_time, 'timeout': timeout, 'interval': interval},
             ikwargs = [{'device':self.runtime.testbed.devices[dev]} for dev in self.runtime.testbed.devices])
@@ -106,21 +115,23 @@ def device_connect(device, start_time, timeout, interval):
         try:
             # Connect to the device
             device.connect()
-            log.info("Successfully connected to '{device}'".format(device=device))
-
-            # Return the pcall call with True
-            return True
 
         except:
             # Not ready sleep and retry
-            log.info("Sleeping for '{interavl}' seconds and retry, remaining time {remaining_time}".format(
-                interavl=interval, remaining_time=timeout-time_difference))
+            log.info("Connecting to device '{device}' failed. Sleeping for '{interval}' seconds "
+                "and retry, remaining time {remaining_time}".format(
+                device=device, interval=interval, remaining_time=timeout-time_difference))
 
             # Sleep for `interval` seconds
             sleep(interval)
 
-            # Retry connecting to the device
-            device_connect(device, start_time, timeout, interval)
+            continue
+
+        else:
+            log.info("Successfully connected to '{device}'".format(device=device))
+
+            # Return the pcall call with True
+            return True
 
     return False
 
@@ -130,7 +141,7 @@ topology_up_plugin = {
     'plugins': {
         'TopologyUpPlugin': {
             'class': TopologyUpPlugin,
-            'enabled': False,
+            'enabled': True,
             'kwargs': {},
             'module': 'pyats.contrib.plugins.topoup_plugin.topoup',
             'name': 'TopologyUpPlugin'
