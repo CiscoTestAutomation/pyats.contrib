@@ -8,12 +8,12 @@ still in the bringup phase.
 Arguments:
 ```
 TopologyUpPlugin:
-  --ignore-all-devices-up           Enabling/Disabling the plugin, if argument passed (and set to True) plugin will be ignored
+  --check-all-devices-up            Enabling/Disabling the plugin run, if argument passed set to True; devices' check will run
   --connection-check-timeout        Timeout value for checking the device connectivity, default is 120 seconds
   --connection-check-interval       Time interval to wait before the device connectivity retry, default is 10 seconds
 
   Legacy:
-  -ignore_all_devices_up           Enabling/Disabling the plugin, if argument passed (and set to True) plugin will be ignored
+  -check_all_devices_up            Enabling/Disabling the plugin run, if argument set to True; devices' check will run
   -connection_check_timeout        Timeout value for checking the device connectivity, default is 120 seconds
   -connection_check_interval       Time interval to wait before the device connectivity retry, default is 10 seconds
 ```

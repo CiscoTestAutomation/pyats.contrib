@@ -21,16 +21,16 @@ class TopologyUpPlugin(BasePlugin):
         grp = parser.add_argument_group('TopologyUpPlugin')
 
         if legacy_cli:
-            all_devices_up = ['-ignore_all_devices_up']
+            all_devices_up = ['-check_all_devices_up']
             connection_check_timeout = ['-connection_check_timeout']
             connection_check_interval = ['-connection_check_interval']
         else:
-            all_devices_up = ['--ignore-all-devices-up']
+            all_devices_up = ['--check-all-devices-up']
             connection_check_timeout = ['--connection-check-timeout']
             connection_check_interval = ['--connection-check-interval']
 
-        # -ignore_all_devices_up
-        # --ignore-all-devices-up
+        # -check_all_devices_up
+        # --check-all-devices-up
         grp.add_argument(*all_devices_up,
                          dest='all_devices_up',
                          action="store",
@@ -61,13 +61,13 @@ class TopologyUpPlugin(BasePlugin):
            are up and running before executing the test script.
         '''
 
-        # Check for the argument controlling the plugin run
-        ignore_devices_up = self.runtime.args.all_devices_up
+        # Check for the argument controlling the plugin run (Checking devices)
+        check_devices_up = self.runtime.args.all_devices_up
 
-        if ignore_devices_up:
-            log.info("TopologyUp Plugin is disabled, '--ignore-all-devices-up' must be set to True "
-                     "in case of pyats runs or '-ignore_all_devices_up' set to True in case of legacy "
-                     "easypy runs")
+        if not check_devices_up:
+            log.info("Checking all devices are up and ready is disabled, '--check-all-devices-up' "
+                     "must be set to True in case of pyats runs or '-check_all_devices_up' set to "
+                     "True in case of legacy easypy runs")
             return
         else:
             log.info("TopologyUp Plugin is enabled, will start the plugin checking for all "
