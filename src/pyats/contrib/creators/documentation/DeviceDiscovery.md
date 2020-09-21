@@ -35,7 +35,7 @@ The topology creator also has a variety of options as listed below
 
 ## Examples
 ### Discovering only Links Between Existing Devices
-By staring with a testbed file and running the following command:
+By starting with a testbed file and running the following command:
 
     pyats create testbed topology --testbed-file <testbed-name>.yaml --output result.yaml --only-links
     .......
@@ -55,7 +55,7 @@ This will generate a new testbed with the newly discovered devices added in
 ![Device Discovery Example](./img/DDdiscovery.png)
 
 ### Device Discovery with user input options:
-With these flages enabled it will allow the system to enable CDP and LLDP on devices to make sure the creator finds all connections on the devices. Also enabled is manual credential entry and creation of a debug log
+With these flags enabled it will allow the system to enable CDP and LLDP on devices to make sure the creator finds all connections on the devices. Also enabled is manual credential entry and creation of a debug log
 
     pyats create testbed topology --testbed-file <testbed-name>.yaml --output result.yaml --config-discovery --cred-prompt --debug-log debug.log
     
@@ -88,20 +88,20 @@ With these flages enabled it will allow the system to enable CDP and LLDP on dev
     will work
 
 - if the script finds numerous IP addresses to connect to a device it will attempt to connect with all of them, this can lead to long amounts of time spent connecting to devices
-- exclude networks is only tested to work with ipV4 addresses, no data for performance with ipV6 addreses is known
+- exclude networks is only tested to work with IPv4 addresses, no data for performance with IPv6 addresses is known
 - Can use devices with only telnet connections as proxies
 - Script has only been tested  to work with devices that have telnet and ssh connections
-- Arguments need to be entered with spaces int them need to have ' ' surounding them IE: 
+- Arguments need to be entered with spaces int them need to have ' ' surrounding them IE: 
         
-        --exlcude-interfaces arg1 arg2
+        --exclude-interfaces arg1 arg2
     will only parse arg1 while
 
         --exclude-interfaces 'arg1 arg2'
     will parse both
 - Script will not find IPv6 address for interfaces
-- Script will not retest devices after one set of connection attempts (IE if correct connection info for a device after it's connection attenpt, it won't be used)
+- Script will not retest devices after one set of connection attempts (IE if correct connection info for a device after it's connection attempt, it won't be used)
 - If the script sees an IP address listed as an interface address and a mgmt address, it will treat it as a mgmt ip address only
-- currently parsers tend to report most ip addresss found as mgmt addresses even if they are not so alot of interface addresses are falsely reported as mgmt addresses
+- currently parsers tend to report most ip addresses found as mgmt addresses even if they are not so a lot of interface addresses are falsely reported as mgmt addresses
 
 ### Further testing required for features
 - add-unconnected-interfaces
@@ -118,4 +118,4 @@ With these flages enabled it will allow the system to enable CDP and LLDP on dev
 
 ### To Develop 
 - make code compatible for working with IPv6 addresses (edit apis to get IPv6 Address for interfaces and)
-- Find way to make connection attempts faster (currently the script has to destroy the connection after each connection attempt and that adds alot of time)
+- Find way to make connection attempts faster (currently the script has to destroy the connection after each connection attempt and that adds a lot of time)
