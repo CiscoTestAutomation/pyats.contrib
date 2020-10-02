@@ -4,6 +4,7 @@ from time import sleep, time
 
 # pyAts
 from pyats.async_ import pcall
+from pyats.log.utils import banner
 from pyats.easypy.plugins.bases import BasePlugin
 
 # Logger
@@ -86,9 +87,24 @@ class TopologyUpPlugin(BasePlugin):
             ckwargs = {'start_time': start_time, 'timeout': timeout, 'interval': interval},
             ikwargs = [{'device':self.runtime.testbed.devices[dev]} for dev in self.runtime.testbed.devices])
 
-        if not (pcall_output[0] and pcall_output[1]):
+        # Create Summary
+        log.info(banner("Devices' connection trials summary"))
+
+        failed = False
+
+        for res, dev, count in pcall_output:
+            if res is False:
+                failed = True
+                log.warning("Device '{device}' connectivity check failed after '{count}' trial(s)".format(
+                    device=dev, count=count))
+            else:
+                log.info("Device '{device}' connectivity passed after '{count}' trial(s)".format(
+                    device=dev, count=count))
+
+        if failed:
             # Terminate testscript
             raise Exception ("Not all the testbed devices are up and ready")
+            # log.error("Not all the testbed devices are up and ready")
         else:
             log.info("All devices are up and ready, Connected succesfully!")
 
@@ -107,15 +123,21 @@ def device_connect(device, start_time, timeout, interval):
 
         Returns:
             result(`bool`): Device is successfully connected
+            device.name(`str`): Device's name'
+            count(`int`): Device's connectivity trials count
 
         Raises:
             None
 
     '''
 
-    time_difference = time() - start_time
+    count = 0
 
     while (time() - start_time) < float(timeout):
+
+        time_difference = time() - start_time
+
+        count = count+1
 
         try:
             # Connect to the device
@@ -123,7 +145,7 @@ def device_connect(device, start_time, timeout, interval):
 
         except:
             # Not ready sleep and retry
-            log.info("Connecting to device '{device}' failed. Sleeping for '{interval}' seconds "
+            log.info("Connecting to device '{device}' failed. Sleeping for '{interval}' seconds "\
                 "and retry, remaining time {remaining_time}".format(
                 device=device, interval=interval, remaining_time=timeout-time_difference))
 
@@ -136,9 +158,9 @@ def device_connect(device, start_time, timeout, interval):
             log.info("Successfully connected to '{device}'".format(device=device))
 
             # Return the pcall call with True
-            return True
+            return (True, device.name, count)
 
-    return False
+    return (False, device.name, count)
 
 
 # entrypoint
