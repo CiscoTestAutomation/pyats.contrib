@@ -90,23 +90,34 @@ class TopologyUpPlugin(BasePlugin):
         # Create Summary
         log.info(banner("Devices' connection trials summary"))
 
-        failed = False
+        failed_list = []
+        succeeded_list = []
 
         for res, dev, count in pcall_output:
             if res is False:
-                failed = True
-                log.warning("Device '{device}' connectivity check failed after '{count}' trial(s)".format(
-                    device=dev, count=count))
+                msg = "Device '{device}' connectivity check failed after '{count}' trial(s)".format(
+                    device=dev, count=count)
+                failed_list.append(msg)
             else:
-                log.info("Device '{device}' connectivity passed after '{count}' trial(s)".format(
-                    device=dev, count=count))
+                msg = "Device '{device}' connectivity passed after '{count}' trial(s)".format(
+                    device=dev, count=count)
+                succeeded_list.append(msg)
 
-        if failed:
+        for mes in succeeded_list:
+            log.info(mes)
+
+        for fail_mes in failed_list:
+            if fail_mes == failed_list[0]:
+                log.info('')
+            log.warning(fail_mes)
+
+        if failed_list:
             # Terminate testscript
+            log.info(banner("TopologyUp Plugin end!"))
             raise Exception ("Not all the testbed devices are up and ready")
-            # log.error("Not all the testbed devices are up and ready")
         else:
             log.info("All devices are up and ready, Connected succesfully!")
+            log.info(banner("TopologyUp Plugin end!"))
 
         return
 
