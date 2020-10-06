@@ -70,6 +70,7 @@ all: package
 package: 
 	@echo ""
 	@$(PYTHON) setup.py bdist_wheel --dist-dir=$(DIST_DIR)
+	@$(PYTHON) setup.py sdist --dist-dir=$(DIST_DIR)
 	@echo ""
 
 check:
