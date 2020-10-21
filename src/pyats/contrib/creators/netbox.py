@@ -247,7 +247,6 @@ class Netbox(TestbedCreator):
         response = [] 
         netbox_endpoints = ["dcim/devices", "virtualization/virtual-machines"]
         for endpoint in netbox_endpoints: 
-            print(f"processing {endpoint}")
             if self._url_filter is None:
                 url=f"api/{endpoint}/?format=json"
             else:
