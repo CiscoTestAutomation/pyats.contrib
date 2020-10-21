@@ -345,8 +345,6 @@ class Netbox(TestbedCreator):
                 interface_response = self._get_request(interface_url, headers, 
                                                                         "results")
 
-                # TODO: Add logic for pageination of interfaces - consider using _get_request() function
-
                 # If no interface response are received, we skip the device
                 if not interface_response:
                     logger.warning(
