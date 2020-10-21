@@ -470,7 +470,6 @@ class Netbox(TestbedCreator):
                 return valid
 
         for valid, netbox_type_values in valid_types_lookup.items(): 
-            # if interface_type["value"] and interface_type["value"] in netbox_type_values: 
             if interface_type["value"] in netbox_type_values: 
                 return valid
         
