@@ -115,7 +115,18 @@ class Netbox(TestbedCreator):
             else:
                 response = requests.get(url, headers=headers, verify=self._verify)
             
-            return self._parse_response(response, return_property)
+            results = self._parse_response(response, return_property)
+
+            while "next" in response.json().keys() and response.json()["next"]:
+                next_url = response.json()["next"]
+                if not headers:
+                    response = requests.get(next_url, verify=self._verify)
+                else:
+                    response = requests.get(next_url, headers=headers, verify=self._verify)
+                
+                results += self._parse_response(response, return_property)
+
+            return results
         except:
             return None
 
@@ -164,11 +175,11 @@ class Netbox(TestbedCreator):
     
         """
         valid_os = ["com", "asa", "dnac", "ios-xe", "ios-xr",
-            "iosxe", "iosxr", "ios", "junos", "linux", "nxos", "yang"]
+            "iosxe", "iosxr", "ios", "junos", "linux", "nxos", "nx-os", "yang"]
 
         for valid in valid_os:
-            if os and valid in os:
-                return valid
+            if os and valid in os.lower():
+                return valid.replace("-", "")
         
         return None
 
