@@ -221,7 +221,7 @@ class Netbox(TestbedCreator):
         current = data
 
         for key in keys:        
-            if not current:
+            if not current or key not in current.keys():
                 return None
             
             current = current[key]
@@ -244,13 +244,17 @@ class Netbox(TestbedCreator):
         data = {}
         topology = {}
 
-        if self._url_filter is None:
-            url=f"api/dcim/devices/?format=json"
-        else:
-            url=f"api/dcim/devices/?format=json&{self._url_filter}"
+        response = [] 
+        netbox_endpoints = ["dcim/devices", "virtualization/virtual-machines"]
+        for endpoint in netbox_endpoints: 
+            print(f"processing {endpoint}")
+            if self._url_filter is None:
+                url=f"api/{endpoint}/?format=json"
+            else:
+                url=f"api/{endpoint}/?format=json&{self._url_filter}"
 
-        devices_url = self._format_url(self._netbox_url, url)
-        response = self._get_request(devices_url, headers, "results")
+            devices_url = self._format_url(self._netbox_url, url)
+            response += self._get_request(devices_url, headers, "results")
 
         # If no response is received for retrieving a list of devices, stop
         if not response: 
@@ -261,9 +265,9 @@ class Netbox(TestbedCreator):
             is_valid = True
 
             if self._host_upper is True:
-                device_name = device["display_name"].upper()
+                device_name = device["name"].upper()
             else:
-                device_name = device["display_name"]
+                device_name = device["name"]
 
             logger.info("Retrieving associated data for {}..."
                                                         .format(device_name))
@@ -325,12 +329,23 @@ class Netbox(TestbedCreator):
             
             # TODO Link is required for topology, need to implement
             if self._topology is True:
+                # Need to determine whether to do the lookup for interfaces against DCIM or VM
+                if "rack" in device.keys():
+                    # Even unracked devices have the key "rack" in the returned body
+                    interface_url = self._format_url(self._netbox_url, 
+                        "api/dcim/interfaces/?device_id={}&format=json".format(
+                                                                            device_id))                    
+                else: 
+                    # Otherwise lookup as VM
+                    interface_url = self._format_url(self._netbox_url, 
+                        "api/virtualization/interfaces/?virtual_machine_id={}&format=json".format(
+                                                                            device_id))                    
+
                 # Send request for interfaces
-                interface_url = self._format_url(self._netbox_url, 
-                    "api/dcim/interfaces/?device_id={}&format=json".format(
-                                                                        device_id))
                 interface_response = self._get_request(interface_url, headers, 
                                                                         "results")
+
+                # TODO: Add logic for pageination of interfaces - consider using _get_request() function
 
                 # If no interface response are received, we skip the device
                 if not interface_response:
