@@ -523,9 +523,9 @@ class Netbox(TestbedCreator):
         netbox_endpoints = ["dcim/devices", "virtualization/virtual-machines"]
         for endpoint in netbox_endpoints: 
             if self._url_filter is None:
-                url=f"api/{endpoint}/?format=json"
+                url="api/{endpoint}/?format=json".format(endpoint=endpoint)
             else:
-                url=f"api/{endpoint}/?format=json&{self._url_filter}"
+                url="api/{endpoint}/?format=json&{url_filter}".format(endpoint=endpoint, url_filter=self._url_filter)
 
             devices_url = self._format_url(self._netbox_url, url)
             response += self._get_request(devices_url, headers, "results")
@@ -647,14 +647,14 @@ class Netbox(TestbedCreator):
                                             interface["type"]
                                         ))
                     if current.get('type') is None:
-                        logger.info(f"{device_name} interface {interface_name.lower()} is not valid, skipping")
+                        logger.info("{device_name} interface {interface_name.lower()} is not valid, skipping".format(device_name=device_name))
                         del interfaces[interface_name]
                         continue
                     
                     # Use the cable information from Netbox to configure link on interface
                     self._set_value_if_exists(
                         current, "link", 
-                        self._get_info(interface, ["cable", "id"], lambda link: f"cable_num_{link}")
+                        self._get_info(interface, ["cable", "id"], lambda link: "cable_num_{link}".format(link=link))
                     )
 
                     # Attempt to retrieve IP for each interface
