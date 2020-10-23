@@ -183,22 +183,297 @@ class Netbox(TestbedCreator):
         
         return None
 
-    def _format_type(self, interface_type): 
+    def _format_type(self, interface_name, interface_type): 
         """ Helper to parse the interface type.
 
         Args:
             interface_type ('str'): The input interface type.
+            interface_name ('str'): The input interface name from Netbox.
+            interface_type ('str'): The input interface type from Netbox.
 
         Returns:
             str: The interface type if it exists or none if it 
             cannot be found in list of valid types.
     
         """
-        valid_types = ["ethernet", "loopback", "vlan"]
+        # for reference: available at /api/dcim/_choices/interface:type
+        netbox_interface_types = [
+            {
+                "value": 0,
+                "label": "Virtual"
+            },
+            {
+                "value": 200,
+                "label": "Link Aggregation Group (LAG)"
+            },
+            {
+                "value": 800,
+                "label": "100BASE-TX (10/100ME)"
+            },
+            {
+                "value": 1000,
+                "label": "1000BASE-T (1GE)"
+            },
+            {
+                "value": 1120,
+                "label": "2.5GBASE-T (2.5GE)"
+            },
+            {
+                "value": 1130,
+                "label": "5GBASE-T (5GE)"
+            },
+            {
+                "value": 1150,
+                "label": "10GBASE-T (10GE)"
+            },
+            {
+                "value": 1170,
+                "label": "10GBASE-CX4 (10GE)"
+            },
+            {
+                "value": 1050,
+                "label": "GBIC (1GE)"
+            },
+            {
+                "value": 1100,
+                "label": "SFP (1GE)"
+            },
+            {
+                "value": 1200,
+                "label": "SFP+ (10GE)"
+            },
+            {
+                "value": 1300,
+                "label": "XFP (10GE)"
+            },
+            {
+                "value": 1310,
+                "label": "XENPAK (10GE)"
+            },
+            {
+                "value": 1320,
+                "label": "X2 (10GE)"
+            },
+            {
+                "value": 1350,
+                "label": "SFP28 (25GE)"
+            },
+            {
+                "value": 1400,
+                "label": "QSFP+ (40GE)"
+            },
+            {
+                "value": 1420,
+                "label": "QSFP28 (50GE)"
+            },
+            {
+                "value": 1500,
+                "label": "CFP (100GE)"
+            },
+            {
+                "value": 1510,
+                "label": "CFP2 (100GE)"
+            },
+            {
+                "value": 1650,
+                "label": "CFP2 (200GE)"
+            },
+            {
+                "value": 1520,
+                "label": "CFP4 (100GE)"
+            },
+            {
+                "value": 1550,
+                "label": "Cisco CPAK (100GE)"
+            },
+            {
+                "value": 1600,
+                "label": "QSFP28 (100GE)"
+            },
+            {
+                "value": 1700,
+                "label": "QSFP56 (200GE)"
+            },
+            {
+                "value": 1750,
+                "label": "QSFP-DD (400GE)"
+            },
+            {
+                "value": 2600,
+                "label": "IEEE 802.11a"
+            },
+            {
+                "value": 2610,
+                "label": "IEEE 802.11b/g"
+            },
+            {
+                "value": 2620,
+                "label": "IEEE 802.11n"
+            },
+            {
+                "value": 2630,
+                "label": "IEEE 802.11ac"
+            },
+            {
+                "value": 2640,
+                "label": "IEEE 802.11ad"
+            },
+            {
+                "value": 2810,
+                "label": "GSM"
+            },
+            {
+                "value": 2820,
+                "label": "CDMA"
+            },
+            {
+                "value": 2830,
+                "label": "LTE"
+            },
+            {
+                "value": 6100,
+                "label": "OC-3/STM-1"
+            },
+            {
+                "value": 6200,
+                "label": "OC-12/STM-4"
+            },
+            {
+                "value": 6300,
+                "label": "OC-48/STM-16"
+            },
+            {
+                "value": 6400,
+                "label": "OC-192/STM-64"
+            },
+            {
+                "value": 6500,
+                "label": "OC-768/STM-256"
+            },
+            {
+                "value": 6600,
+                "label": "OC-1920/STM-640"
+            },
+            {
+                "value": 6700,
+                "label": "OC-3840/STM-1234"
+            },
+            {
+                "value": 3010,
+                "label": "SFP (1GFC)"
+            },
+            {
+                "value": 3020,
+                "label": "SFP (2GFC)"
+            },
+            {
+                "value": 3040,
+                "label": "SFP (4GFC)"
+            },
+            {
+                "value": 3080,
+                "label": "SFP+ (8GFC)"
+            },
+            {
+                "value": 3160,
+                "label": "SFP+ (16GFC)"
+            },
+            {
+                "value": 3320,
+                "label": "SFP28 (32GFC)"
+            },
+            {
+                "value": 3400,
+                "label": "QSFP28 (128GFC)"
+            },
+            {
+                "value": 4000,
+                "label": "T1 (1.544 Mbps)"
+            },
+            {
+                "value": 4010,
+                "label": "E1 (2.048 Mbps)"
+            },
+            {
+                "value": 4040,
+                "label": "T3 (45 Mbps)"
+            },
+            {
+                "value": 4050,
+                "label": "E3 (34 Mbps)"
+            },
+            {
+                "value": 5000,
+                "label": "Cisco StackWise"
+            },
+            {
+                "value": 5050,
+                "label": "Cisco StackWise Plus"
+            },
+            {
+                "value": 5100,
+                "label": "Cisco FlexStack"
+            },
+            {
+                "value": 5150,
+                "label": "Cisco FlexStack Plus"
+            },
+            {
+                "value": 5200,
+                "label": "Juniper VCP"
+            },
+            {
+                "value": 5300,
+                "label": "Extreme SummitStack"
+            },
+            {
+                "value": 5310,
+                "label": "Extreme SummitStack-128"
+            },
+            {
+                "value": 5320,
+                "label": "Extreme SummitStack-256"
+            },
+            {
+                "value": 5330,
+                "label": "Extreme SummitStack-512"
+            },
+            {
+                "value": 32767,
+                "label": "Other"
+            }
+        ]
 
+        # map the values of interface type from Netbox to a pyATS/Genie valid type 
+        valid_types_lookup = {
+            "ethernet": [800, 1000, 1120, 1130, 1150, 1170, 1050, 1100, 1200, 1300, 
+                1310, 1320, 1350, 1400, 1420, 1500, 1510, 1650, 1520, 1550, 1600, 1700, 
+                1750,], 
+            # "loopback": [], 
+            "vlan": [0], 
+            "port-channel": [200], 
+            "wireless": [2600, 2610, 2620, 2630, 2640,], 
+            "cellular": [2810, 2820, 2830], 
+            "SONET": [6100, 6200, 6300, 6400, 6500, 6600, 6700], 
+            "fibrechannel": [3010, 3020, 3040, 3080, 3160, 3320, 3400], 
+            "serial": [4000, 4010, 4040, 4050], 
+            "stacking": [5000, 5050, 5100, 5150, 5200, 5300, 5310, 5320, 5330], 
+            "other": [32767]
+            }
+
+        # TODO: iosxr interface-types require UPPER case names - need to update to support 
+        valid_types = ["ethernet", "loopback", "vlan", "port-channel", "pseudowire", "tunnel", "mgmt", "nve", ]
+
+        # 2 phase type lookup, first try with interface name, then use Netbox interface type
         for valid in valid_types:
-            if interface_type and valid in interface_type:
+            if interface_name and valid in interface_name:
                 return valid
+
+        for valid, netbox_type_values in valid_types_lookup.items(): 
+            if interface_type["value"] in netbox_type_values: 
+                return valid
+        
+        # TODO: ASAv Management0/0 interfaces don't match interface name based types, and are "Virtual" interfaces in NetBox
 
         return None
 
@@ -368,7 +643,10 @@ class Netbox(TestbedCreator):
                     current.setdefault("alias", "{}_{}"
                                             .format(device_name, interface_name))
                     self._set_value_if_exists(current, "type", 
-                                        self._format_type(interface_name.lower()))
+                                        self._format_type(
+                                            interface_name.lower(), 
+                                            interface["type"]
+                                        ))
                     if current.get('type') is None:
                         logger.info(f"{device_name} interface {interface_name.lower()} is not valid, skipping")
                         del interfaces[interface_name]
