@@ -572,6 +572,13 @@ class Netbox(TestbedCreator):
             self._set_value_if_exists(device_data, "platform", device_platform)
             self._set_value_if_exists(device_data, "type", 
                             self._get_info(device, ["device_type", "model"]))
+
+            # NetBox Virtual Machines don't have a "device_type" attribute, but pyATS requires
+            # one. If missing, construct a type from Platform + Role
+            if "type" not in device_data.keys(): 
+                role_name = self._get_info(device, ["role", "name"])
+                platform_name = self._get_info(device, ["platform", "name"])
+                device_data["type"] = "{platform} - {role}".format(platform = platform_name, role = role_name)
             
             # Initialize connection data
             connections = device_data.setdefault("connections", {})
@@ -706,13 +713,15 @@ class Netbox(TestbedCreator):
 
                 username = input("Username: ")
                 password = input("Password: ")
+
+                # Only include device specific credentials block if default credentials were NOT provided
+                device_data.setdefault("credentials", {
+                    "default": { "username": username, "password": password }
+                })
             else:
                 username = self._def_user
                 password  = self._def_pass
 
-            device_data.setdefault("credentials", {
-                 "default": { "username": username, "password": password }
-            })
 
         # If testbed has data, return it
         if len(data.keys()) > 0:
