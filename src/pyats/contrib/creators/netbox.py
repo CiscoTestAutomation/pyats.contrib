@@ -516,8 +516,19 @@ class Netbox(TestbedCreator):
         logger.info("Begin retrieving data from netbox...")
         token = "Token {}".format(self._user_token)
         headers = { "Authorization": token }
+        testbed = {}
         data = {}
         topology = {}
+
+        # Configure Testbed wide details
+        if self._def_user and self._def_pass:
+            logger.info("Configuring testbed default credentials.")
+            testbed["credentials"] = {
+                "default": {
+                    "username": self._def_user, 
+                    "password": self._def_pass
+                }
+            }
 
         response = [] 
         netbox_endpoints = ["dcim/devices", "virtualization/virtual-machines"]
@@ -702,16 +713,18 @@ class Netbox(TestbedCreator):
 
                 username = input("Username: ")
                 password = input("Password: ")
+
+                # Only include device specific credentials block if default credentials were NOT provided
+                device_data.setdefault("credentials", {
+                    "default": { "username": username, "password": password }
+                })
             else:
                 username = self._def_user
                 password  = self._def_pass
 
-            device_data.setdefault("credentials", {
-                 "default": { "username": username, "password": password }
-            })
 
         # If testbed has data, return it
         if len(data.keys()) > 0:
-            return { "devices": data, "topology": topology }
+            return { "testbed": testbed, "devices": data, "topology": topology }
         
         return None
