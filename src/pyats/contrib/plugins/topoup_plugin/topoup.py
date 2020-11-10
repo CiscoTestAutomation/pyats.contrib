@@ -158,7 +158,7 @@ def device_connect(device, start_time, timeout, interval):
             # Not ready sleep and retry
             log.info("Connecting to device '{device}' failed. Sleeping for '{interval}' seconds "\
                 "and retry, remaining time {remaining_time}".format(
-                device=device, interval=str(interval), remaining_time=str(timeout-time_difference)))
+                device=device, interval=str(interval), remaining_time=str(float(timeout)-float(time_difference))))
 
             # Sleep for `interval` seconds
             sleep(interval)
