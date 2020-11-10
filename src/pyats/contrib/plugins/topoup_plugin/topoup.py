@@ -161,7 +161,7 @@ def device_connect(device, start_time, timeout, interval):
                 device=device, interval=str(interval), remaining_time=str(float(timeout)-float(time_difference))))
 
             # Sleep for `interval` seconds
-            sleep(interval)
+            sleep(int(interval))
 
             continue
 
