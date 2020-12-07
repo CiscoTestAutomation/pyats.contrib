@@ -369,6 +369,9 @@ class TestbedCreator(BaseTestbedLoader):
                     'cli': {
                         'ip': row.pop('ip'),
                         'protocol': row.pop('protocol')}}
+                
+                if 'proxy' in row:
+                    connections['cli'].update({'proxy': row.pop('proxy')})
 
                 if port:
                     connections['cli'].update({'port': int(port)})
