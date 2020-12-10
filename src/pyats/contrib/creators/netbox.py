@@ -665,7 +665,7 @@ class Netbox(TestbedCreator):
                                             interface["type"]
                                         ))
                     if current.get('type') is None:
-                        logger.info("{device_name} interface {interface_name.lower()} is not valid, skipping".format(device_name=device_name))
+                        logger.info("{device_name} interface {interface_name} is not valid, skipping".format(device_name=device_name, interface_name=interface_name.lower()))
                         del interfaces[interface_name]
                         continue
                     
