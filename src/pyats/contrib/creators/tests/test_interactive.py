@@ -1,8 +1,13 @@
 from unittest import TestCase, main, mock
-from ..interactive import Interactive
+from pyats.contrib.creators.interactive import Interactive
 from pyats.topology import Testbed
+from pyats.datastructures import Configuration
+from pyats.utils import secret_strings
 
 class TestInteractive(TestCase):
+
+    maxDiff = None
+
     @mock.patch('builtins.input')
     @mock.patch('getpass.getpass')
     def test_interactive(self, getpass, input_function):
@@ -77,6 +82,9 @@ class TestInteractive(TestCase):
         input_function.side_effect = mock_input
         getpass.return_value = "super"
         output_file = '/tmp/test.yaml'
+        # set default pyats configuration
+        config = Configuration()
+        secret_strings.cfg = config
         Interactive(encode_password=True).to_testbed_file(output_file)
         with open(output_file) as file:
             self.assertEqual(file.read(), expected)

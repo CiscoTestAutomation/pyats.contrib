@@ -1,8 +1,13 @@
-from ..ansible import Ansible
+from pyats.contrib.creators.ansible import Ansible
 from unittest import TestCase, main
 from pyats.topology import Testbed
+from pyats.datastructures import Configuration
+from pyats.utils import secret_strings
 
 class TestAnsible(TestCase):
+
+    maxDiff = None
+
     def setUp(self):
         self.inventory = """[all:vars]
 ansible_connection=network_cli
@@ -170,6 +175,9 @@ ansible_become_pass=Cisc0123
     platform: ios
     type: iosxe
 """ 
+        # set default pyats configuration
+        config = Configuration()
+        secret_strings.cfg = config
         creator = Ansible(inventory_name=self.inventory_file, 
                                                         encode_password=True)
         creator.to_testbed_file(self.output)

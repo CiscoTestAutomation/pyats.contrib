@@ -2,7 +2,7 @@
 import os
 import sys
 
-from ..creator import TestbedCreator
+from pyats.contrib.creators.creator import TestbedCreator
 from unittest import TestCase, main
 from pyats.topology import Testbed
 from pyats.topology.loader.base import BaseTestbedLoader

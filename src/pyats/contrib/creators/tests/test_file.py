@@ -2,9 +2,11 @@ import os
 import shutil
 import xlwt
 
-from ..file import File
+from pyats.contrib.creators.file import File
 from unittest import TestCase, main
 from pyats.topology import Testbed
+from pyats.datastructures import Configuration
+from pyats.utils import secret_strings
 
 class TestFile(TestCase):
     def setUp(self):
@@ -81,6 +83,9 @@ class TestFile(TestCase):
                     testbed.devices['nx-osv-1'].credentials.default.username)
 
     def test_encode_password(self):
+        # set default pyats configuration
+        config = Configuration()
+        secret_strings.cfg = config
         File(path=self.test_csv, encode_password=True).to_testbed_file(
                                                                     self.output)
         with open(self.output) as file: 

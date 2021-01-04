@@ -2,7 +2,8 @@ import xlrd
 
 from unittest import TestCase, main
 from pyats.topology import Testbed
-from ..template import Template
+from pyats.contrib.creators.template import Template
+
 
 class TestTemplate(TestCase):
     test_csv = '/tmp/test.csv'
