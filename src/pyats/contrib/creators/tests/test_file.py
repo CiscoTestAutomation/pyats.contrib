@@ -9,6 +9,10 @@ from pyats.datastructures import Configuration
 from pyats.utils import secret_strings
 
 class TestFile(TestCase):
+
+    # set default pyats configuration
+    secret_strings.cfg = Configuration()
+
     def setUp(self):
         self.csv_file = ("hostname,ip,username,password,protocol,os,"
         "custom:opt1,custom:opt2\nnx-osv-1,172.25.192.90,admin,admin,"
@@ -83,9 +87,6 @@ class TestFile(TestCase):
                     testbed.devices['nx-osv-1'].credentials.default.username)
 
     def test_encode_password(self):
-        # set default pyats configuration
-        config = Configuration()
-        secret_strings.cfg = config
         File(path=self.test_csv, encode_password=True).to_testbed_file(
                                                                     self.output)
         with open(self.output) as file: 

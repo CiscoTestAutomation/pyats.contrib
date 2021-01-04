@@ -7,6 +7,8 @@ from pyats.utils import secret_strings
 class TestAnsible(TestCase):
 
     maxDiff = None
+    # set default pyats configuration
+    secret_strings.cfg = Configuration()
 
     def setUp(self):
         self.inventory = """[all:vars]
@@ -175,9 +177,6 @@ ansible_become_pass=Cisc0123
     platform: ios
     type: iosxe
 """ 
-        # set default pyats configuration
-        config = Configuration()
-        secret_strings.cfg = config
         creator = Ansible(inventory_name=self.inventory_file, 
                                                         encode_password=True)
         creator.to_testbed_file(self.output)

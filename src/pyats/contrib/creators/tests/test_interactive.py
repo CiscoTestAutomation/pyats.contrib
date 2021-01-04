@@ -7,6 +7,8 @@ from pyats.utils import secret_strings
 class TestInteractive(TestCase):
 
     maxDiff = None
+    # set default pyats configuration
+    secret_strings.cfg = Configuration()
 
     @mock.patch('builtins.input')
     @mock.patch('getpass.getpass')
@@ -82,9 +84,6 @@ class TestInteractive(TestCase):
         input_function.side_effect = mock_input
         getpass.return_value = "super"
         output_file = '/tmp/test.yaml'
-        # set default pyats configuration
-        config = Configuration()
-        secret_strings.cfg = config
         Interactive(encode_password=True).to_testbed_file(output_file)
         with open(output_file) as file:
             self.assertEqual(file.read(), expected)
