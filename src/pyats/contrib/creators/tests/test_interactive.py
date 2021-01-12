@@ -1,8 +1,15 @@
 from unittest import TestCase, main, mock
-from ..interactive import Interactive
+from pyats.contrib.creators.interactive import Interactive
 from pyats.topology import Testbed
+from pyats.datastructures import Configuration
+from pyats.utils import secret_strings
 
 class TestInteractive(TestCase):
+
+    maxDiff = None
+    # set default pyats configuration
+    secret_strings.cfg = Configuration()
+
     @mock.patch('builtins.input')
     @mock.patch('getpass.getpass')
     def test_interactive(self, getpass, input_function):

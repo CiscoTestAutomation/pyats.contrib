@@ -1,5 +1,5 @@
 from unittest import TestCase, main
-from ..netbox import Netbox
+from pyats.contrib.creators.netbox import Netbox
 from pyats.topology import Testbed
 
 class TestNetbox(TestCase):

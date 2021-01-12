@@ -1,8 +1,15 @@
-from ..ansible import Ansible
+from pyats.contrib.creators.ansible import Ansible
 from unittest import TestCase, main
 from pyats.topology import Testbed
+from pyats.datastructures import Configuration
+from pyats.utils import secret_strings
 
 class TestAnsible(TestCase):
+
+    maxDiff = None
+    # set default pyats configuration
+    secret_strings.cfg = Configuration()
+
     def setUp(self):
         self.inventory = """[all:vars]
 ansible_connection=network_cli

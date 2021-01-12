@@ -2,11 +2,17 @@ import os
 import shutil
 import xlwt
 
-from ..file import File
+from pyats.contrib.creators.file import File
 from unittest import TestCase, main
 from pyats.topology import Testbed
+from pyats.datastructures import Configuration
+from pyats.utils import secret_strings
 
 class TestFile(TestCase):
+
+    # set default pyats configuration
+    secret_strings.cfg = Configuration()
+
     def setUp(self):
         self.csv_file = ("hostname,ip,username,password,protocol,os,"
         "custom:opt1,custom:opt2\nnx-osv-1,172.25.192.90,admin,admin,"
