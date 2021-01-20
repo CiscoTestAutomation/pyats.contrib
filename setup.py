@@ -19,6 +19,7 @@ def discover_creators():
         '__init__.py',
         'creator.py',
         'README.md',
+        'libs',
         'tests'
     ], listdir('src/pyats/contrib/creators'))
     creators = [creator.replace('.py', '') for creator in creators]
