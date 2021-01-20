@@ -96,7 +96,11 @@ setup(
 
     # package dependencies
     install_requires=[
-        "ansible", "requests", "xlrd", "xlrd", "xlwt", "xlsxwriter"
+        "ansible", 
+        "requests", 
+        "xlrd==1.2", # xlrd==1.2 because support for '.xlsx' files was dropped in later versions
+        "xlwt", 
+        "xlsxwriter"
     ],
 
     # external modules
