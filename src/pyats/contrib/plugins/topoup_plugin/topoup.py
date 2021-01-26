@@ -34,8 +34,7 @@ class TopologyUpPlugin(BasePlugin):
         # --check-all-devices-up
         grp.add_argument(*all_devices_up,
                          dest='all_devices_up',
-                         action="store",
-                         default = None,
+                         action="store_true",
                          help='Enable/Disable checking for topology up pre job execution')
 
         # -connection_check_timeout
