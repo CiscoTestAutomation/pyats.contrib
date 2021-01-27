@@ -6,13 +6,18 @@ See:
     https://packaging.python.org/en/latest/distributing.html
 '''
 
+import os
+import re
 from setuptools import setup, find_packages
 from os import listdir
-from os.path import isfile, join
+from os.path import join, dirname
 
-def read(path):
-    with open(path) as f:
-        return f.read()
+
+def read(*paths):
+    '''read and return txt content of file'''
+    with open(join(dirname(__file__), *paths)) as fp:
+        return fp.read()
+
 
 def discover_creators():
     creators = filter(lambda creator: creator not in [
@@ -27,10 +32,19 @@ def discover_creators():
         .format(source=source, source_title=source.title()) \
             for source in creators]
 
+def find_version(*paths):
+    '''reads a file and returns the defined __version__ value'''
+    version_match = re.search(r"^__version__ ?= ?['\"]([^'\"]*)['\"]",
+                              read(*paths), re.M)
+    if version_match:
+        return version_match.group(1)
+    raise RuntimeError("Unable to find version string.")
+
+
 # launch setup
 setup(
     name = 'pyats.contrib',
-    version = '20.12.2b0',
+    version = find_version('src', 'pyats', 'contrib', '__init__.py'),
 
     # descriptions
     description = 'Open source package for pyATS framework extensions.',
@@ -97,10 +111,10 @@ setup(
 
     # package dependencies
     install_requires=[
-        "ansible", 
-        "requests", 
+        "ansible",
+        "requests",
         "xlrd==1.2", # xlrd==1.2 because support for '.xlsx' files was dropped in later versions
-        "xlwt", 
+        "xlwt",
         "xlsxwriter"
     ],
 
