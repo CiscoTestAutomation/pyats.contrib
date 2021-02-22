@@ -81,10 +81,18 @@ class TopologyUpPlugin(BasePlugin):
         log.info("Connectivity check timeout is '{timeout}' and "
             "connectivity check interval is '{interval}'".format(timeout=timeout, interval=interval))
 
+        # check devices and exclude IXIA device
+        devices_list = []
+        for device in self.runtime.testbed.find_devices():
+            if 'ixia' not in str(device.__class__):
+                devices_list.append({'device': device})
+            else:
+                log.info("Device {device} is not supported and connected check is skipped.".format(device=device.name))
+
         # Trying to connect to all devices in parallel
         pcall_output = pcall(device_connect,
             ckwargs = {'start_time': start_time, 'timeout': timeout, 'interval': interval},
-            ikwargs = [{'device':self.runtime.testbed.devices[dev]} for dev in self.runtime.testbed.devices])
+            ikwargs = devices_list)
 
         # Create Summary
         log.info(banner("Devices' connection trials summary"))
