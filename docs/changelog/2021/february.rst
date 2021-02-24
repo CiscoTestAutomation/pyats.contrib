@@ -1,13 +1,13 @@
-Jan 2021
-========
+February 2021
+=============
 
-January 27th
-------------
+February 23rd
+-------------
 
 .. csv-table:: Module Versions
     :header: "Modules", "Versions"
 
-        ``pyats.contrib``, v21.1
+        ``pyats.contrib``, v21.2
 
 
 Install Instructions
@@ -28,4 +28,4 @@ Upgrade Instructions
 Features and Bug Fixes:
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-* Plugin device_up will not verify by default, and if --device_up is provided, it will verify it.
+* No additional features added
