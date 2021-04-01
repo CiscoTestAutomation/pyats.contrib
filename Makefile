@@ -1,13 +1,17 @@
+
 # Variables
+PKG_NAME	  = pyats-contrib
 BUILD_DIR     = $(shell pwd)/__build__
 DIST_DIR      = $(BUILD_DIR)/dist
 PYTHON		  = python
+PROD_USER     = pyadm@pyats-ci
+STAGING_PKGS  = /auto/pyats/staging/packages
 
 # xlrd==1.2 because support for '.xlsx' files was dropped in later versions
 DEPENDENCIES = ansible requests xlrd==1.2 xlwt xlsxwriter
 
 .PHONY: check help clean test package develop undevelop all \
-        install_build_deps uninstall_build_deps
+        install_build_deps uninstall_build_deps distribute_staging
 
 help:
 	@echo "Please use 'make <target>' where <target> is one of"
@@ -22,6 +26,7 @@ help:
 	@echo " undevelop             unset the above development mode"
 	@echo " install_build_deps    install build dependencies"
 	@echo " uninstall_build_deps  remove build dependencies"
+	@echo " distribute_staging    Distribute the package to staging area"
 	@echo ""
 
 install_build_deps:
@@ -94,4 +99,15 @@ test:
 	@$(PYTHON) -m unittest discover src
 
 	@echo "Done"
+	@echo ""
+
+distribute_staging:
+	@echo ""
+	@echo "--------------------------------------------------------------------"
+	@echo "Copying all distributable to $(STAGING_PKGS)"
+	@test -d $(DIST_DIR) || { echo "Nothing to distribute! Exiting..."; exit 1; }
+	@ssh -q $(PROD_USER) 'test -e $(STAGING_PKGS)/$(PKG_NAME) || mkdir $(STAGING_PKGS)/$(PKG_NAME)'
+	@scp $(DIST_DIR)/* $(PROD_USER):$(STAGING_PKGS)/$(PKG_NAME)/
+	@echo ""
+	@echo "Done."
 	@echo ""
