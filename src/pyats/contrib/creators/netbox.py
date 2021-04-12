@@ -721,6 +721,9 @@ class Netbox(TestbedCreator):
             else:
                 username = self._def_user
                 password  = self._def_pass
+                device_data.setdefault("credentials", {
+                    "default": { "username": username, "password": password }
+                })
 
 
         # If testbed has data, return it
