@@ -1,6 +1,6 @@
 
 # Variables
-PKG_NAME	  = pyats-contrib
+PKG_NAME	  = pyats.contrib
 BUILD_DIR     = $(shell pwd)/__build__
 DIST_DIR      = $(BUILD_DIR)/dist
 PYTHON		  = python
@@ -56,6 +56,7 @@ develop:
 	@echo ""
 	@echo "--------------------------------------------------------------------"
 	@echo "Setting up development environment"
+	@pip uninstall -y pyats.contrib || true
 	@pip install $(DEPENDENCIES)
 	@$(PYTHON) setup.py develop --no-deps -q
 	@echo ""
