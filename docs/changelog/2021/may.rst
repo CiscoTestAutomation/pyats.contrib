@@ -28,5 +28,5 @@ Upgrade Instructions
 Features and Bug Fixes:
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-* creator file
+* pyats create testbed file
     * Fixed mishandling with filename with '-'
