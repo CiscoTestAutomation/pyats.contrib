@@ -104,7 +104,7 @@ class TestbedCreator(BaseTestbedLoader):
                     j = i
                     
                     # Collect parameters
-                    while j < len(args.args) and not args.args[j].startwith('--') and \
+                    while j < len(args.args) and not args.args[j].startswith('--') and \
                         not '-r' in args.args[j]: j += 1
 
                     kwargs.setdefault(arg.replace('--', '').replace('-', '_'), 
