@@ -27,7 +27,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyats[full]
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip uninstall pyats.contrib
+        pip uninstall pyats.contrib -y
 
     - name: Test Unit Tests
       run: |
