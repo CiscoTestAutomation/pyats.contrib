@@ -81,6 +81,7 @@ package:
 	@echo ""
 	@$(PYTHON) setup.py bdist_wheel --dist-dir=$(DIST_DIR)
 	@$(PYTHON) setup.py sdist --dist-dir=$(DIST_DIR)
+	@echo "Done."
 	@echo ""
 
 check:
@@ -91,7 +92,7 @@ check:
 
 	@$(PYTHON) setup.py check
 
-	@echo "Done"
+	@echo "Done."
 	@echo ""
 
 test:
@@ -102,7 +103,7 @@ test:
 
 	@$(PYTHON) -m unittest discover src
 
-	@echo "Done"
+	@echo "Done."
 	@echo ""
 
 distribute_staging:
