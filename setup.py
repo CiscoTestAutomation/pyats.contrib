@@ -113,6 +113,7 @@ setup(
     install_requires=[
         "ansible",
         "requests",
+        "requests-toolbelt",
         "xlrd==1.2", # xlrd==1.2 because support for '.xlsx' files was dropped in later versions
         "xlwt",
         "xlsxwriter"

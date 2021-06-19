@@ -9,7 +9,7 @@ STAGING_PKGS  = /auto/pyats/staging/packages
 STAGING_EXT_PKGS  = /auto/pyats/staging/packages
 
 # xlrd==1.2 because support for '.xlsx' files was dropped in later versions
-DEPENDENCIES = ansible requests xlrd==1.2 xlwt xlsxwriter
+DEPENDENCIES = ansible requests requests-toolbelt xlrd==1.2 xlwt xlsxwriter
 
 .PHONY: check help clean test package develop undevelop all \
         install_build_deps uninstall_build_deps distribute_staging\
