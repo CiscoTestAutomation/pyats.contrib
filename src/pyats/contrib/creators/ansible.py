@@ -1,7 +1,10 @@
-from ansible.parsing.dataloader import DataLoader
-from ansible.inventory.manager import InventoryManager
-from ansible.cli.inventory import InventoryCLI
-from ansible import context
+try:
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.inventory.manager import InventoryManager
+    from ansible.cli.inventory import InventoryCLI
+    from ansible import context
+except Exception:
+    raise ImportError("'ansible' package is not installed. Please install by running: pip install ansible")
 from .creator import TestbedCreator
 
 class Ansible(TestbedCreator):
