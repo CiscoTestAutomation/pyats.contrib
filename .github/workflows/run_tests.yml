@@ -24,8 +24,9 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
+        python -m pip install --upgrade pip setuptools wheel
         pip install pyats[full]
+        pip install ansible
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         pip uninstall pyats.contrib -y
 
