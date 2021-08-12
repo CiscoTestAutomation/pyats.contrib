@@ -175,10 +175,14 @@ class Netbox(TestbedCreator):
     
         """
         valid_os = ["com", "asa", "dnac", "ios-xe", "ios-xr",
-            "iosxe", "iosxr", "ios", "junos", "linux", "nxos", "nx-os", "yang"]
+            "iosxe", "iosxr", "ios", "junos", "linux", "nxos", "nx-os", "yang", 
+            "ftd"]
 
         for valid in valid_os:
             if os and valid in os.lower():
+                #ftd is a deprecated platform in pyats, change to fxos
+                if valid == "ftd":
+                   return "fxos"
                 return valid.replace("-", "")
         
         return None
@@ -705,6 +709,7 @@ class Netbox(TestbedCreator):
                 )
                 
                 del data[device_name]
+                del topology[device_name]
                 continue
                 
             if self._def_user is None or self._def_pass is None:
