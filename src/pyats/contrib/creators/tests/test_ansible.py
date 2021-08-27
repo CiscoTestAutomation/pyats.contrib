@@ -1,9 +1,18 @@
-from pyats.contrib.creators.ansible import Ansible
+import unittest
 from unittest import TestCase, main
 from pyats.topology import Testbed
 from pyats.datastructures import Configuration
 from pyats.utils import secret_strings
 
+def check_ansible_installed():
+    try:
+        global Ansible
+        from pyats.contrib.creators.ansible import Ansible
+    except ImportError:
+        return True
+    return False  
+
+@unittest.skipIf(check_ansible_installed(), 'ansible package is not installed')
 class TestAnsible(TestCase):
 
     maxDiff = None
