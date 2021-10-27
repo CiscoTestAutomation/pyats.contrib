@@ -1,7 +1,7 @@
 October 2021
 ===========
 
-October 31st
+October 26th
 -----------
 
 .. csv-table:: Module Versions
