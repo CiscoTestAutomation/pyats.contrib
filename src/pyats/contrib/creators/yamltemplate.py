@@ -10,7 +10,8 @@ class Yamltemplate(TestbedCreator):
 
     Creator for the 'yamltemplate' source. Takes in a YAML file with $-based identifiers
     (as described in PEP 292). Prompts for input for each identifier, substitutes the given
-    values, and outputs the resulting YAML file.
+    values, and outputs the resulting YAML file. Can optionally take a list of values from
+    a second YAML file, and prompt the user to override them if desired.
 
     Args:
         template_file ('str'): The path of the input YAML template file.
@@ -27,6 +28,10 @@ class Yamltemplate(TestbedCreator):
 
     pyATS Examples:
         pyats create testbed yamltemplate --template-file=temp.yaml --output=testbed.yaml
+        pyats create testbed yamltemplate --template-file=temp.yaml --value-file values.yaml
+            --output=testbed.yaml
+        pyats create testbed yamltemplate --template-file=temp.yaml --value-file values.yaml
+            --output=testbed.yaml --noprompt
 
     Examples:
         # Create testbed from test.csv with encoded password
