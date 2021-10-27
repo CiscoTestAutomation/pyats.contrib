@@ -93,7 +93,6 @@ class Yamltemplate(TestbedCreator):
 
         if not self._noprompt:
             keys = [s[1] or s[2] for s in tmpl.pattern.findall(tmpl_str) if s[1] or s[2]]
-            print(keys)
             for key in list(dict.fromkeys(keys)):
                 if key in kwargs:
                     kwargs[key] = self._get_info(f'{key} ({kwargs[key]}): ', default=kwargs[key])
