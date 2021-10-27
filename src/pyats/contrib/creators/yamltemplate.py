@@ -13,23 +13,24 @@ class Yamltemplate(TestbedCreator):
     values, and outputs the resulting YAML file.
 
     Args:
-        path ('str'): The path of the input YAML template file.
-        values ('str'): The path of a YAML file contains key-value pairs to be populated in the template.
-        noprompt ('boolean'): If specified, the user will not be prompted to override the default values
-                              from the values file.
+        template_file ('str'): The path of the input YAML template file.
+        value_file ('str') default=None: The path of a YAML file contains key-value pairs
+            to be populated in the template.
+        noprompt ('boolean') default=False: If specified, the user will not be prompted
+            to override the default values from the value_file.
 
-    CLI Argument        |  Class Argument
+    CLI Argument          |  Class Argument
     ---------------------------------------------
-    --path=value        |  path=value
-    --values=value      |  values=value
-    --noprompt          |  noprompt=True
+    --template-file=value |  template_file=value
+    --value-file=value    |  value_file=value
+    --noprompt            |  noprompt=True
 
     pyATS Examples:
-        pyats create testbed yamltemplate --path=temp.yaml --output=testbed.yaml
+        pyats create testbed yamltemplate --template-file=temp.yaml --output=testbed.yaml
 
     Examples:
         # Create testbed from test.csv with encoded password
-        creator = Yamltemplate(path="temp.yaml")
+        creator = Yamltemplate(template_file="temp.yaml")
         creator.to_testbed_file("testbed.yaml")
         creator.to_testbed_object()
 
@@ -43,25 +44,22 @@ class Yamltemplate(TestbedCreator):
 
         """
         return {
-            'required': ['path'],
+            'required': ['template_file'],
             'optional': {
-                'values': None,
+                'value_file': None,
                 'noprompt': False,
             }
         }
 
     def _get_info(self, msg, default=''):
-        """ Prompts input from user, validating the input if iterable is
-            provided.
+        """ Prompts input from user with optional default.
 
         Args:
             msg ('str'): The prompt message.
-            iterable ('iterable'): Iterable object that contains the
-                valid/invalid answers.
-            invalid ('bool'): Flag that tells if iterable is invalid answer.
+            default ('str'): The default value if no input provided.
 
         Returns:
-            str: The user's input.
+            str: The user's input, or the default value if no input provided.
 
         """
         response = ''
@@ -77,25 +75,28 @@ class Yamltemplate(TestbedCreator):
             dict: The intermediate testbed dictionary.
 
         """
-        if not os.path.exists(self._path):
-            raise FileNotFoundError(f'File does not exist: {self._path}')
+        if not os.path.exists(self._template_file):
+            raise FileNotFoundError(f'File does not exist: {self._template_file}')
 
-        with open(self._path, 'r') as f:
-            tmpl = f.read()
+        with open(self._template_file, 'r') as f:
+            tmpl_str = f.read()
+
+        tmpl = string.Template(tmpl_str)
 
         kwargs = {}
-        if self._values:
-            with open(self._values, 'r') as f:
+        if self._value_file:
+            with open(self._value_file, 'r') as f:
                 kwargs = yaml.safe_load(f)
 
         if not self._noprompt:
-            keys = [ele[1] for ele in string.Formatter().parse(tmpl) if ele[1]]
+            keys = [s[1] or s[2] for s in tmpl.pattern.findall(tmpl_str) if s[1] or s[2]]
+            print(keys)
             for key in list(dict.fromkeys(keys)):
                 if key in kwargs:
                     kwargs[key] = self._get_info(f'{key} ({kwargs[key]}): ', default=kwargs[key])
                 else:
                     kwargs[key] = self._get_info(f'{key}: ')
 
-        sub = string.Template(tmpl).substitute(kwargs)
+        sub = tmpl.substitute(kwargs)
         clean_yaml = yaml.safe_load(sub)
         return clean_yaml
