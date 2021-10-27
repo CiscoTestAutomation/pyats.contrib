@@ -78,6 +78,9 @@ class Yamltemplate(TestbedCreator):
         if not os.path.exists(self._template_file):
             raise FileNotFoundError(f'File does not exist: {self._template_file}')
 
+        if self._noprompt and not self._value_file:
+            raise Exception('noprompt option requires a value file to be specified')
+
         with open(self._template_file, 'r') as f:
             tmpl_str = f.read()
 
@@ -97,6 +100,9 @@ class Yamltemplate(TestbedCreator):
                 else:
                     kwargs[key] = self._get_info(f'{key}: ')
 
-        sub = tmpl.substitute(kwargs)
+        try:
+            sub = tmpl.substitute(kwargs)
+        except KeyError as e:
+            raise Exception(f'No value found for key "{e.args[0]}"')
         clean_yaml = yaml.safe_load(sub)
         return clean_yaml
