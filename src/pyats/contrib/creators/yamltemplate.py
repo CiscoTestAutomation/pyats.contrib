@@ -2,8 +2,8 @@ import os
 import string
 import yaml
 
-from pyats.topology import loader
 from .creator import TestbedCreator
+
 
 class Yamltemplate(TestbedCreator):
     """ Yamltemplate class (TestbedCreator)
@@ -71,7 +71,6 @@ class Yamltemplate(TestbedCreator):
         while not response:
             response = input(msg) or default
         return response
-
 
     def _generate(self):
         """ Core implementation of how the testbed data is created.
