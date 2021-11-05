@@ -34,7 +34,6 @@ class Yamltemplate(TestbedCreator):
             --output=testbed.yaml --noprompt
 
     Examples:
-        # Create testbed from test.csv with encoded password
         creator = Yamltemplate(template_file="temp.yaml")
         creator.to_testbed_file("testbed.yaml")
         creator.to_testbed_object()
@@ -96,7 +95,9 @@ class Yamltemplate(TestbedCreator):
                 kwargs = yaml.safe_load(f)
 
         if not self._noprompt:
+            # Find all keys from template file
             keys = [s[1] or s[2] for s in tmpl.pattern.findall(tmpl_str) if s[1] or s[2]]
+            # Ignore duplicate keys
             for key in list(dict.fromkeys(keys)):
                 if key in kwargs:
                     kwargs[key] = self._get_info(f'{key} ({kwargs[key]}): ', default=kwargs[key])
