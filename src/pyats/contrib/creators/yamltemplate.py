@@ -20,8 +20,8 @@ class Yamltemplate(TestbedCreator):
             to be populated in the template.
         noprompt ('boolean') default=False: If specified, the user will not be prompted
             to override the default values from the value_file.
-        delimiter ('str') default='%': If specified, uses the provided character as the
-            string template delimiter (must be a single character).
+        delimiter ('str') default='%': If specified, uses the provided string as the
+            string template delimiter.
 
     CLI Argument          |  Class Argument
     ---------------------------------------------
@@ -88,9 +88,6 @@ class Yamltemplate(TestbedCreator):
 
         if self._noprompt and not self._value_file:
             raise Exception('noprompt option requires a value file to be specified')
-
-        if len(self._delimiter) != 1:
-            raise Exception(f'Invalid delimiter "{self._delimiter}" (must be a single character)')
 
         with open(self._template_file, 'r') as f:
             tmpl_str = f.read()

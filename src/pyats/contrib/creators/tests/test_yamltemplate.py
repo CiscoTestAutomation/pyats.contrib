@@ -157,10 +157,6 @@ os: iosxe
         with open(output_file) as file:
             self.assertEqual(file.read(), self.expected)
 
-    def test_invalid_delimiter(self):
-        with self.assertRaises(Exception):
-            Yamltemplate(template_file=self.template_file, delimiter='$%')._generate()
-
 
 if __name__ == '__main__':
     main()
