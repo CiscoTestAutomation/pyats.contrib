@@ -4,8 +4,6 @@ import yaml
 
 from .creator import TestbedCreator
 
-class CustomTemplate(string.Template):
-    delimiter = '%'
 
 class Yamltemplate(TestbedCreator):
     """ Yamltemplate class (TestbedCreator)
@@ -90,7 +88,7 @@ class Yamltemplate(TestbedCreator):
         with open(self._template_file, 'r') as f:
             tmpl_str = f.read()
 
-        tmpl = CustomTemplate(tmpl_str)
+        tmpl = type('CustomTemplate', (string.Template, object), {'delimiter': '%'})(tmpl_str)
 
         kwargs = {}
         if self._value_file:
