@@ -7,7 +7,7 @@ class TestYamltemplate(TestCase):
 
     def setUp(self):
         self.tmpl_str = """devices:
-  %device_name:
+  %{device_name}:
     connections:
       cli:
         ip: %mgmt_ip
