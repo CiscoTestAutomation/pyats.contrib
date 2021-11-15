@@ -20,12 +20,15 @@ class Yamltemplate(TestbedCreator):
             to be populated in the template.
         noprompt ('boolean') default=False: If specified, the user will not be prompted
             to override the default values from the value_file.
+        delimiter ('str') default='%': If specified, uses the provided character as the
+            string template delimiter (must be a single character).
 
     CLI Argument          |  Class Argument
     ---------------------------------------------
     --template-file=value |  template_file=value
     --value-file=value    |  value_file=value
     --noprompt            |  noprompt=True
+    --delimiter=value     |  delimiter=True
 
     pyATS Examples:
         pyats create testbed yamltemplate --template-file=temp.yaml --output=testbed.yaml
@@ -53,6 +56,7 @@ class Yamltemplate(TestbedCreator):
             'optional': {
                 'value_file': None,
                 'noprompt': False,
+                'delimiter': '%'
             }
         }
 
@@ -85,10 +89,13 @@ class Yamltemplate(TestbedCreator):
         if self._noprompt and not self._value_file:
             raise Exception('noprompt option requires a value file to be specified')
 
+        if len(self._delimiter) != 1:
+            raise Exception(f'Invalid delimiter "{self._delimiter}" (must be a single character)')
+
         with open(self._template_file, 'r') as f:
             tmpl_str = f.read()
 
-        tmpl = type('CustomTemplate', (string.Template, object), {'delimiter': '%'})(tmpl_str)
+        tmpl = type('CustomTemplate', (string.Template, object), {'delimiter': self._delimiter})(tmpl_str)
 
         kwargs = {}
         if self._value_file:

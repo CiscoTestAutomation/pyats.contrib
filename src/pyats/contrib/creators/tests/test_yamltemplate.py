@@ -134,6 +134,33 @@ password: super
         with self.assertRaises(Exception):
             Yamltemplate(template_file=self.template_file, noprompt=True)._generate()
 
+    def test_delimiter(self):
+        delimiter = '$'
+        template_file = '/tmp/template2.yaml'
+        with open(template_file, 'w') as file:
+            file.write(self.tmpl_str.replace('%', delimiter))
+
+        values = """device_name: hostname
+mgmt_ip: 123.123.123.123
+username: admin
+password: super
+os: iosxe
+"""
+        values_file = '/tmp/values.yaml'
+        with open(values_file, 'w') as file:
+            file.write(values)
+        output_file = '/tmp/test.yaml'
+        Yamltemplate(template_file=template_file,
+                     value_file=values_file,
+                     noprompt=True,
+                     delimiter=delimiter).to_testbed_file(output_file)
+        with open(output_file) as file:
+            self.assertEqual(file.read(), self.expected)
+
+    def test_invalid_delimiter(self):
+        with self.assertRaises(Exception):
+            Yamltemplate(template_file=self.template_file, delimiter='$%')._generate()
+
 
 if __name__ == '__main__':
     main()
