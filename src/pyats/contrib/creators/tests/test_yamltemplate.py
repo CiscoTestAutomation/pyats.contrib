@@ -7,16 +7,16 @@ class TestYamltemplate(TestCase):
 
     def setUp(self):
         self.tmpl_str = """devices:
-  $device_name:
+  %device_name:
     connections:
       cli:
-        ip: $mgmt_ip
+        ip: %mgmt_ip
         protocol: ssh
     credentials:
       default:
-        username: $username
-        password: $password
-    os: $os
+        username: %username
+        password: %password
+    os: %os
 """
 
         self.template_file = '/tmp/template.yaml'

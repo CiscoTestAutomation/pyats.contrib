@@ -4,14 +4,17 @@ import yaml
 
 from .creator import TestbedCreator
 
+class CustomTemplate(string.Template):
+    delimiter = '%'
 
 class Yamltemplate(TestbedCreator):
     """ Yamltemplate class (TestbedCreator)
 
-    Creator for the 'yamltemplate' source. Takes in a YAML file with $-based identifiers
-    (as described in PEP 292). Prompts for input for each identifier, substitutes the given
-    values, and outputs the resulting YAML file. Can optionally take a list of values from
-    a second YAML file, and prompt the user to override them if desired.
+    Creator for the 'yamltemplate' source. Takes in a YAML file containing template strings
+    as described in PEP 292, but using % as the delimiter (rather than $). Prompts for input
+    for each identifier, substitutes the given values, and outputs the resulting YAML file.
+    Can optionally take a list of values from a second YAML file, and prompt the user to
+    override them if desired.
 
     Args:
         template_file ('str'): The path of the input YAML template file.
@@ -87,7 +90,7 @@ class Yamltemplate(TestbedCreator):
         with open(self._template_file, 'r') as f:
             tmpl_str = f.read()
 
-        tmpl = string.Template(tmpl_str)
+        tmpl = CustomTemplate(tmpl_str)
 
         kwargs = {}
         if self._value_file:
