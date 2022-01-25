@@ -1,6 +1,8 @@
 from unittest import TestCase, main, mock
 from pyats.contrib.creators.yamltemplate import Yamltemplate
 from pyats.topology import Testbed
+import tempfile
+import os
 
 
 class TestYamltemplate(TestCase):
@@ -44,10 +46,11 @@ class TestYamltemplate(TestCase):
         def mock_input(text):
             return value.pop(0)
         input_function.side_effect = mock_input
-        output_file = '/tmp/test.yaml'
+        _, output_file = tempfile.mkstemp(text=True)
         Yamltemplate(template_file=self.template_file).to_testbed_file(output_file)
         with open(output_file) as file:
             self.assertEqual(file.read(), self.expected)
+        os.remove(output_file)
         value = input_value.copy()
         testbed = Yamltemplate(template_file=self.template_file).to_testbed_object()
         self.assertTrue(isinstance(testbed, Testbed))
@@ -73,10 +76,11 @@ mgmt_ip: 123.123.123.123
         values_file = '/tmp/values.yaml'
         with open(values_file, 'w') as file:
             file.write(values)
-        output_file = '/tmp/test.yaml'
+        _, output_file = tempfile.mkstemp(text=True)
         Yamltemplate(template_file=self.template_file, value_file=values_file).to_testbed_file(output_file)
         with open(output_file) as file:
             self.assertEqual(file.read(), self.expected)
+        os.remove(output_file)
         value = input_value.copy()
         testbed = Yamltemplate(template_file=self.template_file, value_file=values_file).to_testbed_object()
         self.assertTrue(isinstance(testbed, Testbed))
