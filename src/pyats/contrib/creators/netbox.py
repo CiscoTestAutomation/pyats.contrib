@@ -616,6 +616,7 @@ class Netbox(TestbedCreator):
                                         platform_map[raw_device_platform]["os"])
                     platform_map_success = True
 
+            # If platform mapping was not provided or was unsuccessful, then default to standard behavior for assigning os and platform
             if platform_map_success == False:
                 # Construct device platform data
                 device_platform = self._parse_os(self._get_info(device, 
