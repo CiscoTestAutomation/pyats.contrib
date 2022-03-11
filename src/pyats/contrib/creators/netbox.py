@@ -12,6 +12,14 @@ class Netbox(TestbedCreator):
     Creator for the 'netbox' source. Retrieves device data from a hosted Netbox
     instance via REST API and converts them to either a testbed file or testbed
     object. Will prompt user for device credentials.
+    
+    The platform_map allows you to take whatever you have in Netbox for Platform
+    and map it to a particular platform and os setting in PyATS. If it is not provided
+    or matched, it follows the normal processing for platform and os determination.
+
+    The custom_data_source will lookup whatever is provided in the list recursively
+    using the self._get_info function. That value will be set as the custom key
+    in the testbed for the device.
 
     Args:
         netbox_url ('str'): The URL to the Netbox instance.
@@ -24,7 +32,10 @@ class Netbox(TestbedCreator):
         url_filter ('str') default=None: Netbox URL filter string, example: 'status=active&site=test_site'
         def_user ('str') default=None: Set the username for all devices
         def_pass ('str') default=None: Set the password for all devices
+        def_enable ('str) default=None: Set the enable password for all devices
         host_upper (bool) default=False: Store hostname in upper case (to match the prompt)
+        platform_map (dict) default=None: map Netbox platform to PyATS platform
+        custom_data_source (list) default=None: determine source of PyATS custom key
 
     CLI Argument        |  Class Argument
     ---------------------------------------------
@@ -37,7 +48,11 @@ class Netbox(TestbedCreator):
     --url_filter=value  |  url_filter=value
     --def_user=value    |  def_user=value
     --def_pass=value    |  def_pass=value
-    --tag_telnet=value  |  tag_telnet=value
+    --def_enable=value  |  def_enable=value
+    --tag_telnet=value  | tag_telnet=value
+    --platform_map=value| platform_map=value
+    --custom_data_source=value
+                        | custom_data_source=value
 
     pyATS Examples:
         pyats create testbed netbox --output=out --netbox-url=https://netbox.com
@@ -45,7 +60,22 @@ class Netbox(TestbedCreator):
 
     Examples:
         # Create testbed from Netbox source
-        creator = Netbox(user_token="72830d67", netbox_url="https://netbox.com")
+        creator = Netbox(user_token="72830d67", netbox_url="https://netbox.com", 
+            platform_map = {
+                "dnac": {
+                    "platform": "switch",
+                    "os": "iosxe"
+                },
+                "vmanage": {
+                    "platform": "sdwan",
+                    "os": "iosxe"
+                }
+            },
+            custom_data_source = [
+                "config_context",
+                "pyats_custom"
+            ]
+        })
         creator.to_testbed_file("testbed.yaml")
         creator.to_testbed_object()
 
@@ -68,7 +98,10 @@ class Netbox(TestbedCreator):
                 'url_filter': None,
                 'def_user': None,
                 'def_pass': None,
-                'tag_telnet': None
+                'def_enable': None,
+                'tag_telnet': None,
+                'platform_map': None,
+                'custom_data_source': None
             }
         }
 
@@ -533,6 +566,13 @@ class Netbox(TestbedCreator):
                     "password": self._def_pass
                 }
             }
+            # Add Enable if provided
+            if self._def_enable:
+                logger.info("Configuring testbed default enable password.")
+                testbed["credentials"]["enable"] = {
+                    "password": self._def_enable
+                }
+            
 
         response = [] 
         netbox_endpoints = ["dcim/devices", "virtualization/virtual-machines"]
@@ -563,19 +603,35 @@ class Netbox(TestbedCreator):
             device_id = device["id"]
             device_data = data.setdefault(device_name, {})
 
-            # Construct device platform data
-            device_platform = self._parse_os(self._get_info(device, 
-                            ["platform", "slug"], lambda slug: slug.lower()))
+            # If provided, use Platform Map to translate Netbox Platform to PyATS Platform/OS
+            platform_map = self._platform_map
+            platform_map_success = False
+            if platform_map:
+                raw_device_platform = self._get_info(device, 
+                                ["platform", "slug"], lambda slug: slug.lower())
+                if raw_device_platform in platform_map.keys():
+                    # Mapping found in platform_map, set platform and os.
+                    device_platform = platform_map[raw_device_platform]["platform"]
+                    is_valid &= self._set_value_if_exists(device_data, "os",
+                                        platform_map[raw_device_platform]["os"])
+                    platform_map_success = True
 
-            # OS value is required and must exist
-            is_valid &= self._set_value_if_exists(device_data, "os",
-                                                             device_platform)
+            # If platform mapping was not provided or was unsuccessful, then default to standard behavior for assigning os and platform
+            if platform_map_success == False:
+                # Construct device platform data
+                device_platform = self._parse_os(self._get_info(device, 
+                                ["platform", "slug"], lambda slug: slug.lower()))
+                # OS value is required and must exist
+                is_valid &= self._set_value_if_exists(device_data, "os",
+                                                                device_platform)
 
             # Set other testbed values if they exists
             self._set_value_if_exists(device_data, "alias", device_name)
             self._set_value_if_exists(device_data, "platform", device_platform)
             self._set_value_if_exists(device_data, "type", 
                             self._get_info(device, ["device_type", "model"]))
+            self._set_value_if_exists(device_data, "custom",
+                            self._get_info(device,self._custom_data_source))
 
             # NetBox Virtual Machines don't have a "device_type" attribute, but pyATS requires
             # one. If missing, construct a type from Platform + Role
