@@ -3,7 +3,7 @@
 PKG_NAME	  = pyats.contrib
 BUILD_DIR     = $(shell pwd)/__build__
 DIST_DIR      = $(BUILD_DIR)/dist
-PYTHON		  = python
+PYTHON		  = python3
 PROD_USER     = pyadm@pyats-ci
 STAGING_PKGS  = /auto/pyats/staging/packages
 STAGING_EXT_PKGS  = /auto/pyats/staging/packages
@@ -133,7 +133,7 @@ changelogs:
 	@echo "--------------------------------------------------------------------"
 	@echo "Generating changelog file"
 	@echo ""
-	@python3 -c "from ciscodistutils.make_changelog import main; main('./docs/changelog/undistributed', './docs/changelog/undistributed.rst')"
+	@$(PYTHON) -c "from ciscodistutils.make_changelog import main; main('./docs/changelog/undistributed', './docs/changelog/undistributed.rst')"
 	@echo "pyats.contrib changelog created..."
 	@echo ""
 	@echo "Done."
