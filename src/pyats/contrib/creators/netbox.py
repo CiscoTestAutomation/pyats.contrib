@@ -532,6 +532,9 @@ class Netbox(TestbedCreator):
         """
         current = data
 
+        if not keys:
+            return None
+
         for key in keys:    
             if not current or key not in current.keys():
                 return None
