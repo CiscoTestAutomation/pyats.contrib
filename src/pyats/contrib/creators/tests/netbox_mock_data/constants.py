@@ -65,20 +65,8 @@ NETBOX_DEVICES_API_RESPONSE = {
             "parent_device": None,
             "status": {"value": "active", "label": "Active"},
             "airflow": None,
-            "primary_ip": {
-                "id": 181,
-                "url": "http://localhost:55891/api/ipam/ip-addresses/181/?format=json",
-                "display": "1.1.1.1/10",
-                "family": 4,
-                "address": "1.1.1.1/10",
-            },
-            "primary_ip4": {
-                "id": 181,
-                "url": "http://localhost:55891/api/ipam/ip-addresses/181/?format=json",
-                "display": "1.1.1.1/10",
-                "family": 4,
-                "address": "1.1.1.1/10",
-            },
+            "primary_ip": None,
+            "primary_ip4": None,
             "primary_ip6": None,
             "cluster": None,
             "virtual_chassis": None,
@@ -2943,14 +2931,6 @@ NETBOX_VMS_API_RESPONSE = {"count": 0,
 NETBOX_GENERATED_TESTBED = {
     "testbed": {"credentials": {"default": {"username": "test", "password": "test"}}},
     "devices": {
-        "dmi01-akron-rtr01": {
-            "os": "ios",
-            "alias": "dmi01-akron-rtr01",
-            "platform": "ios",
-            "type": "ISR 1111-8P",
-            "connections": {"cli": {"protocol": "ssh", "ip": "1.1.1.1"}},
-            "credentials": {"default": {"username": "test", "password": "test"}},
-        },
         "dmi01-albany-rtr01": {
             "os": "ios",
             "alias": "dmi01-albany-rtr01",
