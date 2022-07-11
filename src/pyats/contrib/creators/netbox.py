@@ -532,6 +532,9 @@ class Netbox(TestbedCreator):
         """
         current = data
 
+        if not keys:
+            return None
+
         for key in keys:    
             if not current or key not in current.keys():
                 return None
@@ -764,8 +767,8 @@ class Netbox(TestbedCreator):
                     "Skipping device..."
                 )
                 
-                del data[device_name]
-                del topology[device_name]
+                data.pop(device_name, None)
+                topology.pop(device_name, None)
                 continue
                 
             if self._def_user is None or self._def_pass is None:
