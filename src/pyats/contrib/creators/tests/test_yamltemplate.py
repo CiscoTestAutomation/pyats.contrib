@@ -7,8 +7,9 @@ import os
 
 class TestYamltemplate(TestCase):
 
-    def setUp(self):
-        self.tmpl_str = """devices:
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpl_str = """devices:
   %{device_name}:
     connections:
       cli:
@@ -21,11 +22,11 @@ class TestYamltemplate(TestCase):
     os: %os
 """
 
-        self.template_file = '/tmp/template.yaml'
-        with open(self.template_file, 'w') as file:
-            file.write(self.tmpl_str)
+        _, cls.template_file = tempfile.mkstemp(text=True)
+        with open(cls.template_file, 'w') as file:
+            file.write(cls.tmpl_str)
 
-        self.expected = """devices:
+        cls.expected = """devices:
   hostname:
     connections:
       cli:
@@ -38,6 +39,24 @@ class TestYamltemplate(TestCase):
     os: iosxe
 """
 
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            os.remove(cls.template_file)
+        except OSError:
+            pass
+
+    def setUp(self):
+        _, self.output_file = tempfile.mkstemp(text=True)
+        _, self.values_file = tempfile.mkstemp(text=True)
+
+    def tearDown(self):
+        try:
+            os.remove(self.output_file)
+            os.remove(self.values_file)
+        except OSError:
+            pass
+
     @mock.patch('builtins.input')
     def test_interactive(self, input_function):
         input_value = ["hostname", "123.123.123.123", "admin", "super", "iosxe"]
@@ -46,11 +65,10 @@ class TestYamltemplate(TestCase):
         def mock_input(text):
             return value.pop(0)
         input_function.side_effect = mock_input
-        _, output_file = tempfile.mkstemp(text=True)
-        Yamltemplate(template_file=self.template_file).to_testbed_file(output_file)
-        with open(output_file) as file:
+        Yamltemplate(template_file=self.template_file).to_testbed_file(self.output_file)
+        with open(self.output_file) as file:
             self.assertEqual(file.read(), self.expected)
-        os.remove(output_file)
+        os.remove(self.output_file)
         value = input_value.copy()
         testbed = Yamltemplate(template_file=self.template_file).to_testbed_object()
         self.assertTrue(isinstance(testbed, Testbed))
@@ -73,16 +91,14 @@ class TestYamltemplate(TestCase):
         values = """device_name: hostname
 mgmt_ip: 123.123.123.123
 """
-        values_file = '/tmp/values.yaml'
-        with open(values_file, 'w') as file:
+        with open(self.values_file, 'w') as file:
             file.write(values)
-        _, output_file = tempfile.mkstemp(text=True)
-        Yamltemplate(template_file=self.template_file, value_file=values_file).to_testbed_file(output_file)
-        with open(output_file) as file:
+        Yamltemplate(template_file=self.template_file, value_file=self.values_file).to_testbed_file(self.output_file)
+        with open(self.output_file) as file:
             self.assertEqual(file.read(), self.expected)
-        os.remove(output_file)
+        os.remove(self.output_file)
         value = input_value.copy()
-        testbed = Yamltemplate(template_file=self.template_file, value_file=values_file).to_testbed_object()
+        testbed = Yamltemplate(template_file=self.template_file, value_file=self.values_file).to_testbed_object()
         self.assertTrue(isinstance(testbed, Testbed))
         self.assertIn('hostname', testbed.devices)
         self.assertEqual(testbed.devices['hostname'].os, 'iosxe')
@@ -99,17 +115,15 @@ username: admin
 password: super
 os: iosxe
 """
-        values_file = '/tmp/values.yaml'
-        with open(values_file, 'w') as file:
+        with open(self.values_file, 'w') as file:
             file.write(values)
-        output_file = '/tmp/test.yaml'
         Yamltemplate(template_file=self.template_file,
-                     value_file=values_file,
-                     noprompt=True).to_testbed_file(output_file)
-        with open(output_file) as file:
+                     value_file=self.values_file,
+                     noprompt=True).to_testbed_file(self.output_file)
+        with open(self.output_file) as file:
             self.assertEqual(file.read(), self.expected)
         testbed = Yamltemplate(template_file=self.template_file,
-                               value_file=values_file,
+                               value_file=self.values_file,
                                noprompt=True).to_testbed_object()
         self.assertTrue(isinstance(testbed, Testbed))
         self.assertIn('hostname', testbed.devices)
@@ -126,12 +140,11 @@ mgmt_ip: 123.123.123.123
 username: admin
 password: super
 """
-        values_file = '/tmp/values.yaml'
-        with open(values_file, 'w') as file:
+        with open(self.values_file, 'w') as file:
             file.write(values)
         with self.assertRaises(Exception):
             Yamltemplate(template_file=self.template_file,
-                         value_file=values_file,
+                         value_file=self.values_file,
                          noprompt=True)._generate()
 
     def test_no_values_file_noprompt(self):
@@ -140,7 +153,7 @@ password: super
 
     def test_delimiter(self):
         delimiter = '$'
-        template_file = '/tmp/template2.yaml'
+        _, template_file = tempfile.mkstemp(text=True)
         with open(template_file, 'w') as file:
             file.write(self.tmpl_str.replace('%', delimiter))
 
@@ -150,16 +163,19 @@ username: admin
 password: super
 os: iosxe
 """
-        values_file = '/tmp/values.yaml'
-        with open(values_file, 'w') as file:
+        with open(self.values_file, 'w') as file:
             file.write(values)
-        output_file = '/tmp/test.yaml'
         Yamltemplate(template_file=template_file,
-                     value_file=values_file,
+                     value_file=self.values_file,
                      noprompt=True,
-                     delimiter=delimiter).to_testbed_file(output_file)
-        with open(output_file) as file:
+                     delimiter=delimiter).to_testbed_file(self.output_file)
+        with open(self.output_file) as file:
             self.assertEqual(file.read(), self.expected)
+
+        try:
+            os.remove(template_file)
+        except OSError:
+            pass
 
 
 if __name__ == '__main__':
