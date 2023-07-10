@@ -4,7 +4,6 @@ import re
 import logging
 import sys
 import argparse
-import ast
 
 from pyats.utils.secret_strings import SecretString
 from pyats.topology.loader.base import BaseTestbedLoader
@@ -137,10 +136,6 @@ class TestbedCreator(BaseTestbedLoader):
                 # Convert key to variable name
                 key = key.replace('--', '')
                 key = key.replace('-', '_')
-
-                # For argument 'verify', evaluate value of type String to type Boolean
-                if key == "verify":
-                    value = ast.literal_eval(value)
 
                 kwargs.setdefault(key, value)
 
