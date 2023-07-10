@@ -576,6 +576,9 @@ class Netbox(TestbedCreator):
                     "password": self._def_enable
                 }
             
+        # If 'self._verify' is of type 'String', then change it from 'String' to type 'Boolean'
+        if isinstance(self._verify, str):
+            self._verify = True if self._verify == "True" else False
 
         response = [] 
         netbox_endpoints = ["dcim/devices", "virtualization/virtual-machines"]
