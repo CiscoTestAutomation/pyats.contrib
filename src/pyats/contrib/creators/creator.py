@@ -136,7 +136,6 @@ class TestbedCreator(BaseTestbedLoader):
                 # Convert key to variable name
                 key = key.replace('--', '')
                 key = key.replace('-', '_')
-
                 kwargs.setdefault(key, value)
 
         return kwargs
