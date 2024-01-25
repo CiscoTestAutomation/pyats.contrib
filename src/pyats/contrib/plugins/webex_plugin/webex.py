@@ -5,7 +5,7 @@ import socket
 
 import requests
 
-from pyats import configuration as cfg
+from pyats.configuration import configuration as cfg
 from pyats.easypy.plugins.bases import BasePlugin
 
 logger = logging.getLogger(__name__)
