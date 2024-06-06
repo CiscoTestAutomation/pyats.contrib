@@ -10,7 +10,7 @@ from pyats.easypy.plugins.bases import BasePlugin
 
 logger = logging.getLogger(__name__)
 
-MESSAGE_URL = 'https://api.ciscospark.com/v1/messages'
+MESSAGE_URL = 'https://webexapis.com/v1/messages'
 
 MESSAGE_TEMPLATE = """
 ## JOB RESULT REPORT
