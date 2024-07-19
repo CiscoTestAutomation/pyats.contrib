@@ -84,8 +84,6 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
 
-    # uses namespace package
-    namespace_packages = ['pyats'],
 
     # project packages
     packages = find_packages(where = 'src'),
