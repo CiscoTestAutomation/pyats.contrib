@@ -10,6 +10,7 @@ from pyats.topology.loader.base import BaseTestbedLoader
 
 logger = logging.getLogger(__name__)
 
+
 class TestbedCreator(BaseTestbedLoader):
     """ TestbedCreator class (BaseTestbedLoader)
 
@@ -359,22 +360,27 @@ class TestbedCreator(BaseTestbedLoader):
 
             try:
                 # get port from ip
-                address = re.split(':| +', row['ip'].strip())
-                row['ip'] = address[0]
-                port = row.pop('port', address[1] if len(address) > 1 else None)
+                ad_port = row['ip'].strip().rsplit(':', 1)
+                address, port = ad_port[0], ad_port[1] if len(ad_port[1]) > 1 else None
                 os = row.pop('os')
 
                 # build the connection dict
-                connections = {
-                    'cli': {
-                        'ip': row.pop('ip'),
-                        'protocol': row.pop('protocol')}}
+                if port:
+                    connections = {
+                        'cli': {
+                            'ip': address,
+                            'port': int(port),
+                            'protocol': row.pop('protocol')
+                        }
+                    }
+                else:
+                    connections = {
+                        'cli': {
+                            'ip': row.pop('ip'),
+                            'protocol': row.pop('protocol')}}
                 
                 if 'proxy' in row:
                     connections['cli'].update({'proxy': row.pop('proxy')})
-
-                if port:
-                    connections['cli'].update({'port': int(port)})
 
                 # build the credentials dict
                 password = row.pop('password', '%ASK{}')
