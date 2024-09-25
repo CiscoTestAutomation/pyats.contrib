@@ -82,8 +82,8 @@ class TestFile(TestCase):
     os: nxos
     type: nxos
 """
-        self.test_csv_6 = "/tmp/test.csv"
-        self.output_6 = "/tmp/testbed.yaml"
+        self.test_csv_6 = "/tmp/test_6.csv"
+        self.output_6 = "/tmp/testbed_6.yaml"
         with open(self.test_csv_6, "w") as csv_6:
             csv_6.write(self.csv_file_6)
 

@@ -361,7 +361,7 @@ class TestbedCreator(BaseTestbedLoader):
             try:
                 # get port from ip
                 ad_port = row['ip'].strip().rsplit(':', 1)
-                address, port = ad_port[0], ad_port[1] if len(ad_port[1]) > 1 else None
+                address, port = ad_port[0], ad_port[1] if len(ad_port) > 1 else None
                 os = row.pop('os')
 
                 # build the connection dict
