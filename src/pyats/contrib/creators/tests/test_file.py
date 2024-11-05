@@ -8,15 +8,15 @@ from pyats.topology import Testbed
 from pyats.datastructures import Configuration
 from pyats.utils import secret_strings
 
-class TestFile(TestCase):
 
+class TestFile(TestCase):
     # set default pyats configuration
     secret_strings.cfg = Configuration()
 
     def setUp(self):
         self.csv_file = ("hostname,ip,username,password,protocol,os,"
-        "custom:opt1,custom:opt2\nnx-osv-1,172.25.192.90,admin,admin,"
-        "telnet,nxos,ss1,ss2")
+                         "custom:opt1,custom:opt2\nnx-osv-1,172.25.192.90,admin,admin,"
+                         "telnet,nxos,ss1,ss2")
         self.expected = """devices:
   nx-osv-1:
     connections:
@@ -58,9 +58,37 @@ class TestFile(TestCase):
         self.output = "/tmp/testbed.yaml"
         with open(self.test_csv, "w") as csv:
             csv.write(self.csv_file)
-        
+
+        self.csv_file_6 = ("hostname,ip,username,password,protocol,os,"
+                           "custom:opt1,custom:opt2\nnx-osv-1,[2001:db8:0400:3200:9020:2:4002:1]:22,admin,admin,"
+                           "ssh,nxos,ss1,ss2")
+        self.expected_6 = r"""devices:
+  nx-osv-1:
+    connections:
+      cli:
+        ip: '[2001:db8:0400:3200:9020:2:4002:1]'
+        port: 22
+        protocol: ssh
+    credentials:
+      default:
+        password: admin
+        username: admin
+      enable:
+        password: admin
+    custom:
+      opt1: ss1
+      opt2: ss2
+    ip: '[2001:db8:0400:3200:9020:2:4002:1]:22'
+    os: nxos
+    type: nxos
+"""
+        self.test_csv_6 = "/tmp/test_6.csv"
+        self.output_6 = "/tmp/testbed_6.yaml"
+        with open(self.test_csv_6, "w") as csv_6:
+            csv_6.write(self.csv_file_6)
+
     def test_no_arguments(self):
-        with self.assertRaises(Exception): 
+        with self.assertRaises(Exception):
             File()
 
     def test_csv_file(self):
@@ -68,7 +96,7 @@ class TestFile(TestCase):
         creator.to_testbed_file(self.output)
         testbed = creator.to_testbed_object()
         self.assertTrue(os.path.isfile(self.output))
-        with open(self.output) as file: 
+        with open(self.output) as file:
             self.assertEqual(file.read(), self.expected)
         self.assertTrue(isinstance(testbed, Testbed))
         self.assertIn('nx-osv-1', testbed.devices)
@@ -77,19 +105,38 @@ class TestFile(TestCase):
         self.assertEqual(testbed.devices['nx-osv-1'].os, 'nxos')
         self.assertEqual(testbed.devices['nx-osv-1'].type, 'nxos')
         self.assertIn('cli', testbed.devices['nx-osv-1'].connections)
-        self.assertEqual('172.25.192.90', 
-                        testbed.devices['nx-osv-1'].connections.cli.ip)
-        self.assertEqual('telnet', 
-                        testbed.devices['nx-osv-1'].connections.cli.protocol)
+        self.assertEqual('172.25.192.90',
+                         testbed.devices['nx-osv-1'].connections.cli.ip)
+        self.assertEqual('telnet',
+                         testbed.devices['nx-osv-1'].connections.cli.protocol)
         self.assertIn('default', testbed.devices['nx-osv-1'].credentials)
         self.assertIn('enable', testbed.devices['nx-osv-1'].credentials)
-        self.assertEqual('admin', 
-                    testbed.devices['nx-osv-1'].credentials.default.username)
+        self.assertEqual('admin',
+                         testbed.devices['nx-osv-1'].credentials.default.username)
+
+    def test_csv_file_v6(self):
+        creator = File(path=self.test_csv_6)
+        creator.to_testbed_file(self.output_6)
+        testbed = creator.to_testbed_object()
+        self.assertTrue(os.path.isfile(self.output_6))
+        with open(self.output_6) as file:
+            self.assertEqual(file.read(), self.expected_6)
+        self.assertTrue(isinstance(testbed, Testbed))
+        self.assertIn('nx-osv-1', testbed.devices)
+        self.assertEqual(testbed.devices['nx-osv-1'].os, 'nxos')
+        self.assertEqual(testbed.devices['nx-osv-1'].type, 'nxos')
+        self.assertIn('cli', testbed.devices['nx-osv-1'].connections)
+        self.assertEqual('[2001:db8:0400:3200:9020:2:4002:1]', testbed.devices['nx-osv-1'].connections.cli.ip)
+        self.assertEqual(22, testbed.devices['nx-osv-1'].connections.cli.port)
+        self.assertEqual('ssh', testbed.devices['nx-osv-1'].connections.cli.protocol)
+        self.assertIn('default', testbed.devices['nx-osv-1'].credentials)
+        self.assertIn('enable', testbed.devices['nx-osv-1'].credentials)
+        self.assertEqual('admin', testbed.devices['nx-osv-1'].credentials.default.username)
 
     def test_encode_password(self):
         File(path=self.test_csv, encode_password=True).to_testbed_file(
-                                                                    self.output)
-        with open(self.output) as file: 
+            self.output)
+        with open(self.output) as file:
             self.assertEqual(file.read(), self.expected_encoded)
 
     def test_directory(self):
@@ -113,9 +160,9 @@ class TestFile(TestCase):
         self.assertEqual(len(creator.to_testbed_object()), 2)
         self.assertTrue(os.path.isfile('{}/0.yaml'.format(outdir)))
         self.assertTrue(os.path.isfile('{}/1.yaml'.format(outdir)))
-        with open('{}/0.yaml'.format(outdir)) as file: 
+        with open('{}/0.yaml'.format(outdir)) as file:
             self.assertEqual(file.read(), self.expected)
-        with open('{}/1.yaml'.format(outdir)) as file: 
+        with open('{}/1.yaml'.format(outdir)) as file:
             self.assertEqual(file.read(), self.expected)
         shutil.rmtree(outdir)
         creator = File(path=directory, recurse=True)
@@ -123,9 +170,9 @@ class TestFile(TestCase):
         self.assertEqual(len(creator.to_testbed_object()), 4)
         self.assertTrue(os.path.isfile('{}/0.yaml'.format(outsubdir)))
         self.assertTrue(os.path.isfile('{}/1.yaml'.format(outsubdir)))
-        with open('{}/0.yaml'.format(outsubdir)) as file: 
+        with open('{}/0.yaml'.format(outsubdir)) as file:
             self.assertEqual(file.read(), self.expected)
-        with open('{}/1.yaml'.format(outsubdir)) as file: 
+        with open('{}/1.yaml'.format(outsubdir)) as file:
             self.assertEqual(file.read(), self.expected)
 
     def test_excel_load(self):
@@ -143,9 +190,10 @@ class TestFile(TestCase):
             ws.write(1, i, k)
         wb.save(self.test_excel)
         File(path=self.test_excel, encode_password=True).to_testbed_file(
-                                                                    self.output)
-        with open(self.output) as file: 
+            self.output)
+        with open(self.output) as file:
             self.assertEqual(file.read(), self.expected_encoded)
+
 
 if __name__ == '__main__':
     main()
