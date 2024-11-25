@@ -1,6 +1,0 @@
---------------------------------------------------------------------------------
-                                Fix
---------------------------------------------------------------------------------
-* creator
-    * Modified TestbedCreator:
-        * Split on rightmost colon only to support ipv6 addresses if written with RFC6874 in mind
