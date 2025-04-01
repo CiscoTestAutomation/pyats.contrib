@@ -11,7 +11,7 @@ Description:
     published hook/entry-point interfaces.
 '''
 
-__version__ = '25.2'
+__version__ = '25.3'
 __author__ = 'Cisco Systems Inc.'
 __contact__ = ['pyats-support@cisco.com', 'pyats-support-ext@cisco.com']
 __copyright__ = 'Copyright (c) 2020, Cisco Systems Inc.'
