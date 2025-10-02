@@ -1,7 +1,7 @@
 September 2025
 ==========
 
- - Pyats.Contrib v25.9 
+September 30 - Pyats.Contrib v25.9 
 ------------------------
 
 
