@@ -103,7 +103,8 @@ setup(
         'pyats.topology.loader': discover_creators(),
         'pyats.easypy.plugins': [
             'webex = pyats.contrib.plugins.webex_plugin.webex:webex_plugin',
-            'topoup = pyats.contrib.plugins.topoup_plugin.topoup:topology_up_plugin'
+            'topoup = pyats.contrib.plugins.topoup_plugin.topoup:topology_up_plugin',
+            'cml2 = pyats.contrib.plugins.cml2_plugin.cml2:cml2_plugin'
         ],
     },
 
@@ -113,7 +114,8 @@ setup(
         "requests-toolbelt",
         "xlrd==1.2", # xlrd==1.2 because support for '.xlsx' files was dropped in later versions
         "xlwt",
-        "xlsxwriter"
+        "xlsxwriter",
+        "virl2_client",
     ],
 
     # external modules
