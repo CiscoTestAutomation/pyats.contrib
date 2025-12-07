@@ -40,6 +40,7 @@ CML2Plugin:
   --cml2-keep-lab            Keep the lab after job completion (default: delete)
   --cml2-ssl-verify          Verify SSL certificate (default: False)
   --cml2-lab-prefix          Prefix for lab name (default: "")
+  --cml2-init-config         Apply initial config (hostname) to nodes (default: True)
 
 Legacy CLI:
   -cml2_enable
@@ -49,7 +50,19 @@ Legacy CLI:
   -cml2_keep_lab
   -cml2_ssl_verify
   -cml2_lab_prefix
+  -cml2_init_config
 ```
+
+## Initial Node Configuration
+
+When `--cml2-init-config` is enabled (default), the plugin applies initial configuration
+to each node before starting the lab. The default configuration includes:
+
+- **hostname**: Set to the device alias (if defined) or device name
+- **no ip domain lookup**: Disable DNS lookups
+- **line con/vty settings**: Disable exec timeout and enable logging synchronous
+
+This ensures that pyATS can properly connect to nodes with the correct hostname.
 
 ## Testbed Format
 

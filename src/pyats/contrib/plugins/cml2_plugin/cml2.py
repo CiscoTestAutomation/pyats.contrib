@@ -38,10 +38,12 @@ log = logging.getLogger(__name__)
 
 PLATFORM_TO_NODE_DEFINITION: dict[str, str] = {
     # IOS/IOL
-    "iosv": "iol",
-    "iol": "iol",
-    "iosvl2": "ioll2",
-    "ioll2": "ioll2",
+    "iosv": "iosv",
+    "iol": "iol-xe",
+    "iol-xe": "iol-xe",
+    "iosvl2": "iosvl2",
+    "ioll2": "ioll2-xe",
+    "ioll2-xe": "ioll2-xe",
     # CSR/Cat8000v
     "csr1000v": "csr1000v",
     "cat8000v": "cat8000v",
@@ -63,8 +65,8 @@ PLATFORM_TO_NODE_DEFINITION: dict[str, str] = {
 
 # OS to default platform mapping (used when platform is not specified)
 OS_TO_DEFAULT_PLATFORM: dict[str, str] = {
-    "ios": "iol",
-    "iosxe": "csr1000v",
+    "ios": "iosv",
+    "iosxe": "iol-xe",
     "iosxr": "iosxrv9000",
     "nxos": "nxosv9000",
     "asa": "asav",
@@ -79,15 +81,19 @@ DEVICE_NAME_PATTERNS: list[tuple[str, str]] = [
     (r"n9k|nxos|nexus", "nxosv9000"),
     (r"xrv|iosxr", "iosxrv9000"),
     (r"asa", "asav"),
-    (r"iol", "iol"),
+    (r"iol", "iol-xe"),
 ]
 
 # CML2 default credentials by node definition
 # Reference: https://developer.cisco.com/docs/modeling-labs/faq/
 CML2_DEFAULT_CREDENTIALS: dict[str, dict[str, str]] = {
-    # IOL (IOS on Linux)
+    # IOL / IOL-XE (IOS on Linux)
     "iol": {"username": "cisco", "password": "cisco"},
+    "iol-xe": {"username": "cisco", "password": "cisco"},
     "ioll2": {"username": "cisco", "password": "cisco"},
+    "ioll2-xe": {"username": "cisco", "password": "cisco"},
+    "iosv": {"username": "cisco", "password": "cisco"},
+    "iosvl2": {"username": "cisco", "password": "cisco"},
     # CSR1000v / Cat8000v / Cat9000v (IOS-XE)
     "csr1000v": {"username": "cisco", "password": "cisco"},
     "cat8000v": {"username": "cisco", "password": "cisco"},
@@ -121,6 +127,7 @@ class DeviceInfo:
     platform: str
     os: str
     type: str
+    alias: str | None = None
     credentials: dict[str, Any] = field(default_factory=dict)
 
 
@@ -264,7 +271,28 @@ def infer_platform(device_name: str, os: str | None, device_type: str | None) ->
 class TestbedParser:
     """Parse pyATS testbed to extract device and link information."""
 
-    SKIP_DEVICES = {"terminal_server", "jumphost", "jump_host"}
+    # Device names to skip (lowercase) - only infrastructure devices
+    SKIP_DEVICES = {
+        "terminal_server", "jumphost", "jump_host",
+    }
+
+    # Device types to skip (lowercase)
+    SKIP_DEVICE_TYPES = {
+        "tgn", "traffic_generator", "traffic-generator",
+        "trafficgen", "pagent", "trex",
+    }
+
+    # OS types that indicate non-CML2 devices (lowercase)
+    SKIP_OS_TYPES = {
+        "ixia", "ixiangpf", "ixianative", "ixiahltapi",
+        "pagent", "trex", "spirent", "stc",
+    }
+
+    # Platform types that indicate non-CML2 devices (lowercase)
+    SKIP_PLATFORMS = {
+        "ixia", "pagent", "trex", "spirent", "stc",
+        "n2x", "agilent", "keysight",
+    }
 
     def __init__(self, testbed: Testbed) -> None:
         self.testbed = testbed
@@ -282,27 +310,47 @@ class TestbedParser:
             return self._devices
 
         self._devices = {}
+        self._skipped_devices: list[tuple[str, str]] = []  # (name, reason)
 
         for device_name, device in self.testbed.devices.items():
-            # Skip special devices
+            # Skip special device names
             if device_name.lower() in self.SKIP_DEVICES:
+                self._skipped_devices.append((device_name, "special device name"))
                 continue
 
             # Get device attributes
             device_os = getattr(device, "os", None)
             device_type = getattr(device, "type", None)
-
-            # Get platform or infer it
             platform = getattr(device, "platform", None)
+
+            # Skip devices with non-CML2 OS types (traffic generators, etc.)
+            if device_os and device_os.lower() in self.SKIP_OS_TYPES:
+                self._skipped_devices.append((device_name, f"unsupported OS '{device_os}'"))
+                log.info(f"Skipping device {device_name}: OS '{device_os}' is not supported in CML2")
+                continue
+
+            # Skip devices with non-CML2 device types
+            if device_type and device_type.lower() in self.SKIP_DEVICE_TYPES:
+                self._skipped_devices.append((device_name, f"device type '{device_type}'"))
+                log.info(f"Skipping device {device_name}: type '{device_type}' is not supported in CML2")
+                continue
+
+            # Skip devices with non-CML2 platforms
+            if platform and platform.lower() in self.SKIP_PLATFORMS:
+                self._skipped_devices.append((device_name, f"platform '{platform}'"))
+                log.info(f"Skipping device {device_name}: platform '{platform}' is not supported in CML2")
+                continue
+
             # If platform is not set or not a valid CML2 node definition, try to infer
             if not platform or platform.lower() not in PLATFORM_TO_NODE_DEFINITION:
                 inferred = infer_platform(device_name, device_os, device_type)
                 if inferred:
                     platform = inferred
-                elif not platform:
-                    log.warning(
-                        f"Device {device_name} has no platform and could not infer one, skipping"
-                    )
+                else:
+                    # Platform is set but not supported, or couldn't infer
+                    reason = f"unsupported platform '{platform}'" if platform else "no platform and could not infer"
+                    self._skipped_devices.append((device_name, reason))
+                    log.warning(f"Skipping device {device_name}: {reason}")
                     continue
 
             # Extract credentials
@@ -314,15 +362,32 @@ class TestbedParser:
                         "password": getattr(cred, "password", "cisco"),
                     }
 
+            # Get device alias
+            device_alias = getattr(device, "alias", None)
+
             self._devices[device_name] = DeviceInfo(
                 name=device_name,
                 platform=platform,
                 os=device_os or "ios",
                 type=device_type or "router",
+                alias=device_alias,
                 credentials=credentials,
             )
 
+        # Log summary of skipped devices
+        if self._skipped_devices:
+            log.info(f"Skipped {len(self._skipped_devices)} device(s) not supported in CML2:")
+            for name, reason in self._skipped_devices:
+                log.info(f"  - {name}: {reason}")
+
         return self._devices
+
+    @property
+    def skipped_devices(self) -> list[tuple[str, str]]:
+        """Return list of (device_name, reason) tuples for skipped devices."""
+        if self._devices is None:
+            self.get_devices()
+        return getattr(self, '_skipped_devices', [])
 
     def get_alias_map(self) -> dict[str, str]:
         """Build a mapping from device alias to actual device name."""
@@ -353,8 +418,8 @@ class TestbedParser:
                 device_name = intf.device.name
                 intf_name = intf.name
                 
-                # Skip devices not in our device list
-                if device_name.lower() in self.SKIP_DEVICES:
+                # Skip devices not in our CML2 device list
+                if device_name not in self.get_devices():
                     continue
                 
                 slot = parse_interface_slot(intf_name)
@@ -465,17 +530,41 @@ class CML2LabBuilder:
         """Get interface by slot number."""
         for interface in node.interfaces():
             if interface.slot == slot:
+                if interface.connected:
+                    log.warning(f"Interface slot {slot} on {node.label} is already connected")
+                    return None
                 return interface
         return None
 
     def _get_next_available_interface(
         self, node: Node, used_slots: set[int]
     ) -> Interface | None:
-        """Get next available interface that hasn't been used."""
+        """Get next available interface that hasn't been used and isn't connected."""
         for interface in sorted(node.interfaces(), key=lambda i: i.slot or 0):
             if interface.slot is not None and interface.slot not in used_slots:
-                return interface
+                # Also check if interface is already connected in CML2
+                if not interface.connected:
+                    return interface
         return None
+
+    def _add_interface_to_node(self, node: Node) -> Interface | None:
+        """Add a new interface to a CML2 node."""
+        try:
+            # Get current max slot number
+            max_slot = -1
+            for intf in node.interfaces():
+                if intf.slot is not None and intf.slot > max_slot:
+                    max_slot = intf.slot
+            
+            new_slot = max_slot + 1
+            log.info(f"Adding new interface (slot {new_slot}) to node {node.label}")
+            
+            # Create new interface on the node
+            new_intf = node.create_interface(slot=new_slot)
+            return new_intf
+        except Exception as e:
+            log.warning(f"Failed to add interface to {node.label}: {e}")
+            return None
 
     def _create_links(self) -> None:
         """Create all links between nodes."""
@@ -515,9 +604,16 @@ class CML2LabBuilder:
                     node2, used_interfaces[ep2.device]
                 )
 
+            # If still no interface available, try to add new interfaces
+            if intf1 is None:
+                intf1 = self._add_interface_to_node(node1)
+            if intf2 is None:
+                intf2 = self._add_interface_to_node(node2)
+
             if not intf1 or not intf2:
                 log.warning(
-                    f"Skipping link {link_info.link_id}: no available interfaces"
+                    f"Skipping link {link_info.link_id}: no available interfaces "
+                    f"and could not add new ones"
                 )
                 continue
 
@@ -532,6 +628,49 @@ class CML2LabBuilder:
             )
 
             self.lab.create_link(intf1, intf2)
+
+    def configure_nodes(self, config_template: str | None = None) -> None:
+        """
+        Apply initial configuration to nodes before starting the lab.
+        
+        By default, sets hostname to the device's alias (if available) or device name.
+        Custom configuration can be provided via config_template.
+        
+        Args:
+            config_template: Optional configuration template string.
+                            Use {hostname} placeholder for device name/alias.
+                            If None, uses default template with just hostname.
+        """
+        if not self.lab:
+            raise RuntimeError("Lab not created")
+
+        log.info(banner("Configuring CML2 Nodes"))
+
+        # Default template sets hostname and basic settings
+        default_template = """hostname {hostname}
+"""
+        template = config_template if config_template else default_template
+
+        for device_name, node in self.node_map.items():
+            # Get device info to access alias
+            device_info = self.devices.get(device_name)
+            
+            # Use device name for hostname (Unicon expects hostname to match testbed device name)
+            # Note: We use device_name, not alias, because Unicon validates hostname against device name
+            hostname = device_name
+            
+            # Generate config from template
+            config = template.format(hostname=hostname)
+            
+            log.info(f"Applying config to {device_name} (hostname: {hostname})")
+            log.debug(f"Config:\n{config}")
+            
+            try:
+                # Set node configuration
+                node.config = config
+                log.info(f"  Configuration applied to {device_name}")
+            except Exception as e:
+                log.warning(f"  Failed to apply config to {device_name}: {e}")
 
     def start_and_wait(self, timeout: int = 600) -> None:
         """Start the lab and wait for convergence."""
@@ -622,6 +761,7 @@ class CML2Plugin(BasePlugin):
             keep_lab = ["-cml2_keep_lab"]
             ssl_verify = ["-cml2_ssl_verify"]
             lab_prefix = ["-cml2_lab_prefix"]
+            init_config = ["-cml2_init_config"]
         else:
             enable = ["--cml2-enable"]
             url = ["--cml2-url"]
@@ -630,6 +770,7 @@ class CML2Plugin(BasePlugin):
             keep_lab = ["--cml2-keep-lab"]
             ssl_verify = ["--cml2-ssl-verify"]
             lab_prefix = ["--cml2-lab-prefix"]
+            init_config = ["--cml2-init-config"]
 
         grp.add_argument(
             *enable,
@@ -687,6 +828,14 @@ class CML2Plugin(BasePlugin):
             help="Prefix for lab name",
         )
 
+        grp.add_argument(
+            *init_config,
+            dest="cml2_init_config",
+            action="store_true",
+            default=True,
+            help="Apply initial configuration (hostname) to nodes before starting (default: True)",
+        )
+
         return grp
 
     def __init__(self, *args, **kwargs) -> None:
@@ -694,6 +843,7 @@ class CML2Plugin(BasePlugin):
         self.client: ClientLibrary | None = None
         self.lab: Lab | None = None
         self.original_testbed: Testbed | None = None
+        self._pre_job_errored: bool = False
 
     def pre_job(self, job) -> None:
         """
@@ -720,13 +870,13 @@ class CML2Plugin(BasePlugin):
             # Connect to CML2
             self._connect_to_cml2()
 
-            # Parse testbed
+            # Parse testbed - all supported devices will be created in CML2
             parser = TestbedParser(self.original_testbed)
             devices = parser.get_devices()
             links = parser.get_links()
 
             if not devices:
-                log.warning("No devices found in testbed, skipping CML2 lab creation")
+                log.warning("No supported devices found in testbed to create in CML2.")
                 return
 
             log.info(f"Found {len(devices)} device(s) and {len(links)} link(s)")
@@ -740,6 +890,11 @@ class CML2Plugin(BasePlugin):
             # Create and start lab
             builder = CML2LabBuilder(self.client, lab_name, devices, links, alias_map)
             self.lab = builder.build()
+
+            # Apply initial configuration if enabled
+            if getattr(self.runtime.args, 'cml2_init_config', True):
+                builder.configure_nodes()
+
             builder.start_and_wait()
 
             # Verify links were created correctly
@@ -755,12 +910,16 @@ class CML2Plugin(BasePlugin):
 
         except Exception as e:
             log.error(f"CML2Plugin failed: {e}")
-            self._cleanup_on_error()
+            self._pre_job_errored = True
+            # Don't cleanup here - let post_job handle it to respect --cml2-keep-lab
             raise
 
     def post_job(self, job) -> None:
         """
         Post-job hook: Clean up CML2 lab if not keeping it.
+
+        This runs even if pre_job errored, to ensure cleanup happens
+        unless --cml2-keep-lab is specified.
 
         Args:
             job: The job object
@@ -769,35 +928,23 @@ class CML2Plugin(BasePlugin):
             return
 
         if self.lab is None:
+            if self._pre_job_errored:
+                log.info(banner("CML2 Plugin - Post Job"))
+                log.info("No lab to cleanup (pre_job failed before lab creation)")
             return
 
         log.info(banner("CML2 Plugin - Post Job"))
 
+        if self._pre_job_errored:
+            log.info("Pre-job failed, attempting cleanup...")
+
         if self.runtime.args.cml2_keep_lab:
             log.info(f"Keeping lab: {self.lab.title} (ID: {self.lab.id})")
-            log.info(f"  URL: {self.runtime.args.cml2_url}")
+            log.info(f"  URL: {self.runtime.args.cml2_url}/lab/{self.lab.id}")
             return
 
         log.info(f"Cleaning up lab: {self.lab.title}")
-
-        try:
-            # Stop lab
-            log.info("Stopping lab...")
-            self.lab.stop(wait=True)
-
-            # Wipe lab
-            log.info("Wiping lab...")
-            self.lab.wipe(wait=True)
-
-            # Remove lab
-            log.info("Removing lab...")
-            self.lab.remove()
-
-            log.info("Lab cleanup complete")
-
-        except Exception as e:
-            log.error(f"Failed to cleanup lab: {e}")
-            log.warning(f"Lab may need manual cleanup: {self.lab.id}")
+        self._cleanup_lab(wait=True)
 
         log.info(banner("CML2 Plugin - Post Job Complete"))
 
@@ -1244,16 +1391,38 @@ class CML2Plugin(BasePlugin):
                         except AttributeError:
                             pass  # Some attributes may be read-only
 
-    def _cleanup_on_error(self) -> None:
-        """Clean up resources on error."""
-        if self.lab:
-            try:
-                log.info("Cleaning up lab due to error...")
-                self.lab.stop(wait=False)
-                self.lab.wipe(wait=False)
-                self.lab.remove()
-            except Exception as cleanup_error:
-                log.warning(f"Failed to cleanup lab: {cleanup_error}")
+    def _cleanup_lab(self, wait: bool = True) -> bool:
+        """
+        Clean up CML2 lab resources.
+
+        Args:
+            wait: Whether to wait for stop/wipe operations to complete
+
+        Returns:
+            True if cleanup was successful, False otherwise
+        """
+        if not self.lab:
+            return True
+
+        try:
+            log.info(f"Stopping lab: {self.lab.title}...")
+            self.lab.stop(wait=wait)
+
+            log.info("Wiping lab...")
+            self.lab.wipe(wait=wait)
+
+            log.info("Removing lab...")
+            self.lab.remove()
+
+            log.info("Lab cleanup complete")
+            self.lab = None
+            return True
+
+        except Exception as cleanup_error:
+            log.error(f"Failed to cleanup lab: {cleanup_error}")
+            if self.lab:
+                log.warning(f"Lab may need manual cleanup: {self.lab.id}")
+            return False
 
 
 # =============================================================================
