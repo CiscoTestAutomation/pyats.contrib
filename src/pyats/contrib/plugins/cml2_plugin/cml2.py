@@ -61,6 +61,52 @@ PLATFORM_TO_NODE_DEFINITION: dict[str, str] = {
     "alpine": "alpine",
 }
 
+# OS to default platform mapping (used when platform is not specified)
+OS_TO_DEFAULT_PLATFORM: dict[str, str] = {
+    "ios": "iol",
+    "iosxe": "csr1000v",
+    "iosxr": "iosxrv9000",
+    "nxos": "nxosv9000",
+    "asa": "asav",
+    "linux": "ubuntu",
+}
+
+# Patterns to infer platform from device name
+DEVICE_NAME_PATTERNS: list[tuple[str, str]] = [
+    (r"csr", "csr1000v"),
+    (r"cat8000", "cat8000v"),
+    (r"cat9000", "cat9000v"),
+    (r"n9k|nxos|nexus", "nxosv9000"),
+    (r"xrv|iosxr", "iosxrv9000"),
+    (r"asa", "asav"),
+    (r"iol", "iol"),
+]
+
+# CML2 default credentials by node definition
+# Reference: https://developer.cisco.com/docs/modeling-labs/faq/
+CML2_DEFAULT_CREDENTIALS: dict[str, dict[str, str]] = {
+    # IOL (IOS on Linux)
+    "iol": {"username": "cisco", "password": "cisco"},
+    "ioll2": {"username": "cisco", "password": "cisco"},
+    # CSR1000v / Cat8000v / Cat9000v (IOS-XE)
+    "csr1000v": {"username": "cisco", "password": "cisco"},
+    "cat8000v": {"username": "cisco", "password": "cisco"},
+    "cat9000v": {"username": "cisco", "password": "cisco"},
+    # NX-OSv9000 (NX-OS)
+    "nxosv9000": {"username": "admin", "password": "cisco"},
+    # IOS-XRv9000 (IOS-XR)
+    "iosxrv9000": {"username": "cisco", "password": "cisco"},
+    # ASAv
+    "asav": {"username": "admin", "password": "Admin123"},
+    # Linux
+    "ubuntu": {"username": "cisco", "password": "cisco"},
+    "alpine": {"username": "alpine", "password": "alpine"},
+    # External Connector (no credentials)
+    "external_connector": {"username": "", "password": ""},
+    # Unmanaged Switch (no credentials)
+    "unmanaged_switch": {"username": "", "password": ""},
+}
+
 
 # =============================================================================
 # Data Classes
@@ -180,6 +226,36 @@ def get_node_definition(platform: str) -> str:
     return PLATFORM_TO_NODE_DEFINITION.get(platform.lower(), platform.lower())
 
 
+def infer_platform(device_name: str, os: str | None, device_type: str | None) -> str | None:
+    """
+    Infer platform from device name, OS, or type when not explicitly specified.
+
+    Args:
+        device_name: Name of the device
+        os: OS type (ios, iosxe, nxos, etc.)
+        device_type: Device type (router, switch, etc.)
+
+    Returns:
+        Inferred platform or None if cannot be determined
+    """
+    # Try to infer from device name patterns
+    device_name_lower = device_name.lower()
+    for pattern, platform in DEVICE_NAME_PATTERNS:
+        if re.search(pattern, device_name_lower):
+            log.info(f"Inferred platform '{platform}' for device '{device_name}' from name pattern")
+            return platform
+
+    # Try to infer from OS
+    if os:
+        os_lower = os.lower()
+        if os_lower in OS_TO_DEFAULT_PLATFORM:
+            platform = OS_TO_DEFAULT_PLATFORM[os_lower]
+            log.info(f"Inferred platform '{platform}' for device '{device_name}' from OS '{os}'")
+            return platform
+
+    return None
+
+
 # =============================================================================
 # Testbed Parser
 # =============================================================================
@@ -212,11 +288,22 @@ class TestbedParser:
             if device_name.lower() in self.SKIP_DEVICES:
                 continue
 
-            # Skip devices without platform
+            # Get device attributes
+            device_os = getattr(device, "os", None)
+            device_type = getattr(device, "type", None)
+
+            # Get platform or infer it
             platform = getattr(device, "platform", None)
-            if not platform:
-                log.warning(f"Device {device_name} has no platform, skipping")
-                continue
+            # If platform is not set or not a valid CML2 node definition, try to infer
+            if not platform or platform.lower() not in PLATFORM_TO_NODE_DEFINITION:
+                inferred = infer_platform(device_name, device_os, device_type)
+                if inferred:
+                    platform = inferred
+                elif not platform:
+                    log.warning(
+                        f"Device {device_name} has no platform and could not infer one, skipping"
+                    )
+                    continue
 
             # Extract credentials
             credentials = {}
@@ -230,64 +317,61 @@ class TestbedParser:
             self._devices[device_name] = DeviceInfo(
                 name=device_name,
                 platform=platform,
-                os=getattr(device, "os", "ios"),
-                type=getattr(device, "type", "router"),
+                os=device_os or "ios",
+                type=device_type or "router",
                 credentials=credentials,
             )
 
         return self._devices
 
+    def get_alias_map(self) -> dict[str, str]:
+        """Build a mapping from device alias to actual device name."""
+        alias_map: dict[str, str] = {}
+        for device_name, device in self.testbed.devices.items():
+            if hasattr(device, "alias") and device.alias:
+                alias_map[device.alias] = device_name
+        return alias_map
+
     def get_links(self) -> list[LinkInfo]:
-        """Extract link information from testbed topology."""
+        """Extract link information from testbed links."""
         if self._links is not None:
             return self._links
 
-        # Collect all link endpoints
-        link_endpoints: dict[str, list[LinkEndpoint]] = defaultdict(list)
+        self._links = []
 
-        # Iterate through topology
-        if not hasattr(self.testbed, "topology") or not self.testbed.topology:
-            self._links = []
+        # Check if testbed has links
+        if not hasattr(self.testbed, "links") or not self.testbed.links:
+            log.info("No links found in testbed")
             return self._links
 
-        for device_name in self.testbed.topology:
-            device_topo = self.testbed.topology[device_name]
-
-            # Skip devices not in our device list
-            if device_name.lower() in self.SKIP_DEVICES:
-                continue
-
-            if not hasattr(device_topo, "interfaces"):
-                continue
-
-            for intf_name, intf in device_topo.interfaces.items():
-                # Get link ID
-                link_id = getattr(intf, "link", None)
-                if not link_id:
+        # Iterate through testbed links
+        for link in self.testbed.links:
+            endpoints = []
+            
+            # Get interfaces connected to this link
+            for intf in link.interfaces:
+                device_name = intf.device.name
+                intf_name = intf.name
+                
+                # Skip devices not in our device list
+                if device_name.lower() in self.SKIP_DEVICES:
                     continue
-
-                # Get link name if link is an object
-                if hasattr(link_id, "name"):
-                    link_id = link_id.name
-
+                
                 slot = parse_interface_slot(intf_name)
-
-                link_endpoints[link_id].append(
+                endpoints.append(
                     LinkEndpoint(
                         device=device_name,
                         interface=intf_name,
                         slot=slot,
                     )
                 )
-
-        # Convert to LinkInfo objects (only links with exactly 2 endpoints)
-        self._links = []
-        for link_id, endpoints in link_endpoints.items():
+            
+            # Only create links with exactly 2 endpoints
             if len(endpoints) == 2:
-                self._links.append(LinkInfo(link_id=link_id, endpoints=endpoints))
+                self._links.append(LinkInfo(link_id=link.name, endpoints=endpoints))
+                log.info(f"Found link: {link.name} ({endpoints[0].device}:{endpoints[0].interface} <-> {endpoints[1].device}:{endpoints[1].interface})")
             elif len(endpoints) > 2:
-                log.warning(f"Link {link_id} has {len(endpoints)} endpoints, skipping")
-            # Single endpoint links are ignored (not connected)
+                log.warning(f"Link {link.name} has {len(endpoints)} endpoints, skipping")
 
         return self._links
 
@@ -306,13 +390,26 @@ class CML2LabBuilder:
         lab_name: str,
         devices: dict[str, DeviceInfo],
         links: list[LinkInfo],
+        alias_map: dict[str, str] | None = None,
     ) -> None:
         self.client = client
         self.lab_name = lab_name
         self.devices = devices
         self.links = links
+        self.alias_map = alias_map or {}  # alias -> actual device name
         self.lab: Lab | None = None
         self.node_map: dict[str, Node] = {}
+
+    def _get_node(self, name: str) -> Node | None:
+        """Get node by device name or alias."""
+        # Try direct lookup
+        if name in self.node_map:
+            return self.node_map[name]
+        # Try resolving alias to actual name
+        actual_name = self.alias_map.get(name)
+        if actual_name and actual_name in self.node_map:
+            return self.node_map[actual_name]
+        return None
 
     def build(self) -> Lab:
         """Build the complete lab topology."""
@@ -325,6 +422,9 @@ class CML2LabBuilder:
         try:
             # Create nodes
             self._create_nodes()
+
+            # Sync lab to ensure interfaces are populated
+            self.lab.sync()
 
             # Create links
             self._create_links()
@@ -388,8 +488,8 @@ class CML2LabBuilder:
 
             ep1, ep2 = link_info.endpoints
 
-            node1 = self.node_map.get(ep1.device)
-            node2 = self.node_map.get(ep2.device)
+            node1 = self._get_node(ep1.device)
+            node2 = self._get_node(ep2.device)
 
             if not node1 or not node2:
                 log.warning(f"Skipping link {link_info.link_id}: missing node(s)")
@@ -443,6 +543,55 @@ class CML2LabBuilder:
 
         self.lab.start(wait=True)
         log.info("Lab started and converged successfully")
+
+    def verify_links(self) -> None:
+        """
+        Verify that all expected links were created in CML2.
+        
+        Raises:
+            RuntimeError: If expected links are missing in the CML2 lab.
+        """
+        if not self.lab:
+            raise RuntimeError("Lab not created")
+
+        log.info(banner("Verifying CML2 Links"))
+
+        # Sync lab to get latest state
+        self.lab.sync()
+
+        # Get actual links from CML2
+        actual_links: set[tuple[str, str]] = set()
+        for link in self.lab.links():
+            intf_a = link.interface_a
+            intf_b = link.interface_b
+            if intf_a and intf_b:
+                node_a = intf_a.node.label
+                node_b = intf_b.node.label
+                # Store as sorted tuple for comparison
+                link_pair = tuple(sorted([node_a, node_b]))
+                actual_links.add(link_pair)
+                log.info(f"  Found link: {node_a}:{intf_a.label} <-> {node_b}:{intf_b.label}")
+
+        # Get expected links from testbed
+        expected_links: set[tuple[str, str]] = set()
+        for link_info in self.links:
+            if len(link_info.endpoints) == 2:
+                ep1, ep2 = link_info.endpoints
+                # Resolve aliases to actual device names
+                dev1 = self.alias_map.get(ep1.device, ep1.device)
+                dev2 = self.alias_map.get(ep2.device, ep2.device)
+                link_pair = tuple(sorted([dev1, dev2]))
+                expected_links.add(link_pair)
+
+        log.info(f"Expected links: {len(expected_links)}, Actual links: {len(actual_links)}")
+
+        # Check for missing links
+        missing_links = expected_links - actual_links
+        if missing_links:
+            missing_str = ", ".join([f"{a} <-> {b}" for a, b in missing_links])
+            error_msg = f"Missing links in CML2 lab: {missing_str}"
+            log.error(error_msg)
+            raise RuntimeError(error_msg)
 
 
 # =============================================================================
@@ -585,13 +734,22 @@ class CML2Plugin(BasePlugin):
             # Build lab name
             lab_name = self.runtime.args.cml2_lab_prefix + parser.lab_name
 
+            # Get alias mapping for device name resolution
+            alias_map = parser.get_alias_map()
+
             # Create and start lab
-            builder = CML2LabBuilder(self.client, lab_name, devices, links)
+            builder = CML2LabBuilder(self.client, lab_name, devices, links, alias_map)
             self.lab = builder.build()
             builder.start_and_wait()
 
+            # Verify links were created correctly
+            builder.verify_links()
+
             # Update testbed
             self._update_testbed()
+
+            # Display topology summary
+            self._display_topology_summary()
 
             log.info(banner("CML2 Plugin - Pre Job Complete"))
 
@@ -670,6 +828,91 @@ class CML2Plugin(BasePlugin):
 
         return True
 
+    def _display_topology_summary(self) -> None:
+        """Display a summary table of the CML2 topology."""
+        if not self.lab:
+            return
+
+        self.lab.sync()
+
+        log.info(banner("CML2 Topology Summary"))
+
+        # Lab info
+        log.info(f"Lab Name: {self.lab.title}")
+        log.info(f"Lab ID:   {self.lab.id}")
+        log.info(f"Lab URL:  {self.runtime.args.cml2_url}lab/{self.lab.id}")
+        log.info("")
+
+        # Device table
+        log.info("=" * 80)
+        log.info("DEVICES")
+        log.info("=" * 80)
+        log.info(f"{'Name':<20} {'Platform':<15} {'State':<12} {'Console Port':<15}")
+        log.info("-" * 80)
+
+        for node in self.lab.nodes():
+            # Get console port from pyATS testbed if available
+            console_port = "N/A"
+            if self.original_testbed and node.label in self.original_testbed.devices:
+                device = self.original_testbed.devices[node.label]
+                if hasattr(device, "connections") and "a" in device.connections:
+                    conn = device.connections["a"]
+                    if hasattr(conn, "arguments") and "line" in conn.arguments:
+                        console_port = str(conn.arguments["line"])
+
+            # Get node state (handle both method and property)
+            node_state = node.state() if callable(node.state) else node.state
+            log.info(
+                f"{node.label:<20} {node.node_definition:<15} {node_state:<12} {console_port:<15}"
+            )
+
+        log.info("")
+
+        # Connection table
+        log.info("=" * 80)
+        log.info("CONNECTIONS")
+        log.info("=" * 80)
+        log.info(f"{'Device':<20} {'Connection':<12} {'Host':<25} {'Port':<10}")
+        log.info("-" * 80)
+
+        if self.original_testbed:
+            for device_name, device in self.original_testbed.devices.items():
+                if device_name == "terminal_server":
+                    continue
+                if hasattr(device, "connections"):
+                    for conn_name, conn in device.connections.items():
+                        host = getattr(conn, "host", "N/A") if hasattr(conn, "host") else "N/A"
+                        port = "N/A"
+                        if hasattr(conn, "arguments") and conn.arguments:
+                            port = str(conn.arguments.get("line", "N/A"))
+                        log.info(f"{device_name:<20} {conn_name:<12} {host:<25} {port:<10}")
+
+        log.info("")
+
+        # Links table
+        log.info("=" * 80)
+        log.info("LINKS")
+        log.info("=" * 80)
+        log.info(f"{'Link':<5} {'Device A':<20} {'Interface A':<20} {'Device B':<20} {'Interface B':<20}")
+        log.info("-" * 85)
+
+        link_num = 1
+        for link in self.lab.links():
+            intf_a = link.interface_a
+            intf_b = link.interface_b
+            if intf_a and intf_b:
+                node_a = intf_a.node.label
+                node_b = intf_b.node.label
+                log.info(
+                    f"{link_num:<5} {node_a:<20} {intf_a.label:<20} {node_b:<20} {intf_b.label:<20}"
+                )
+                link_num += 1
+
+        if link_num == 1:
+            log.info("  (No links)")
+
+        log.info("=" * 80)
+
     def _connect_to_cml2(self) -> None:
         """Connect to CML2 server."""
         try:
@@ -696,10 +939,9 @@ class CML2Plugin(BasePlugin):
         """
         Update runtime testbed with CML2 lab connection info.
 
-        Merging strategy:
-        - Original testbed fields are preserved as baseline
-        - CML2 testbed fields override original fields
-        - Fields only in original testbed are kept
+        Modifies the original testbed in place by:
+        - Adding terminal_server device from CML2
+        - Updating device connections with CML2 breakout info
         """
         if not self.lab:
             return
@@ -712,13 +954,95 @@ class CML2Plugin(BasePlugin):
         # Load CML2 testbed
         cml2_testbed = loader.load(io.StringIO(testbed_yaml))
 
-        # Merge testbeds: original as base, CML2 overrides
-        merged_testbed = self._merge_testbeds(self.original_testbed, cml2_testbed)
-
-        # Update runtime testbed
-        self.runtime.testbed = merged_testbed
+        # Update original testbed in place with CML2 connection info
+        self._update_testbed_in_place(self.original_testbed, cml2_testbed)
 
         log.info("Testbed updated with CML2 connection information")
+    
+    def _update_testbed_in_place(self, original: Testbed, cml2: Testbed) -> None:
+        """
+        Update original testbed in place with CML2 connection info.
+        
+        Args:
+            original: Original testbed to modify
+            cml2: CML2-generated testbed with connection info
+        """
+        # Add terminal_server from CML2 testbed if not present
+        if "terminal_server" in cml2.devices and "terminal_server" not in original.devices:
+            ts_device = cml2.devices["terminal_server"]
+            # Update terminal_server credentials to CML2 credentials
+            if hasattr(ts_device, "credentials") and ts_device.credentials:
+                if "default" in ts_device.credentials:
+                    ts_device.credentials.default.username = self.runtime.args.cml2_username
+                    ts_device.credentials.default.password = self.runtime.args.cml2_password
+            original.add_device(ts_device)
+            log.info("Added terminal_server device from CML2 with updated credentials")
+        
+        # Log CML2 devices for debugging
+        log.info(f"CML2 testbed devices: {list(cml2.devices.keys())}")
+        log.info(f"Original testbed devices: {list(original.devices.keys())}")
+        
+        # Update connections for each device in CML2 testbed
+        for device_name, cml2_device in cml2.devices.items():
+            if device_name == "terminal_server":
+                continue
+            
+            if device_name not in original.devices:
+                log.warning(f"Device {device_name} from CML2 not found in original testbed")
+                continue
+            
+            orig_device = original.devices[device_name]
+            
+            # Update connections from CML2
+            if hasattr(cml2_device, "connections") and cml2_device.connections:
+                for conn_name, conn in cml2_device.connections.items():
+                    orig_device.connections[conn_name] = conn
+                log.info(f"Updated connections for device {device_name}")
+        
+        # Update credentials for ALL original devices to CML2 defaults
+        log.info("Starting credential update for all devices...")
+        for device_name, orig_device in original.devices.items():
+            if device_name == "terminal_server":
+                continue
+                
+            # Always infer platform for CML2 credential lookup
+            # (existing platform attribute may be generic like 'router'/'switch')
+            device_os = getattr(orig_device, "os", None)
+            device_type = getattr(orig_device, "type", None)
+            platform = infer_platform(device_name, device_os, device_type)
+            log.info(f"DEBUG {device_name}: inferred platform={platform}")
+            
+            if platform:
+                node_def = get_node_definition(platform)
+                log.info(f"DEBUG {device_name}: node_def={node_def}, in_creds={node_def in CML2_DEFAULT_CREDENTIALS}")
+                if node_def in CML2_DEFAULT_CREDENTIALS:
+                    cml2_creds = CML2_DEFAULT_CREDENTIALS[node_def]
+                    username = cml2_creds["username"]
+                    password = cml2_creds["password"]
+                    
+                    # Set credentials on both device and connections
+                    from pyats.topology.credentials import Credentials
+                    creds_dict = {
+                        "default": {
+                            "username": username,
+                            "password": password,
+                        },
+                        "enable": {
+                            "password": password,
+                        }
+                    }
+                    orig_device.credentials = Credentials(creds_dict)
+                    
+                    # Also set credentials on each connection
+                    if hasattr(orig_device, "connections"):
+                        for conn_name, conn in orig_device.connections.items():
+                            if hasattr(conn, "__setitem__"):
+                                conn["credentials"] = creds_dict
+                            elif hasattr(conn, "credentials"):
+                                conn.credentials = creds_dict
+                    
+                    log.info(f"Set CML2 credentials for {device_name}: username={username}")
+                    log.info(f"  Verified device: {orig_device.credentials.default.username}")
 
     def _merge_testbeds(self, original: Testbed, cml2: Testbed) -> Testbed:
         """
