@@ -16,6 +16,7 @@ import logging
 import math
 import os
 import re
+import yaml
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -464,6 +465,8 @@ class CML2LabBuilder:
         self.alias_map = alias_map or {}  # alias -> actual device name
         self.lab: Lab | None = None
         self.node_map: dict[str, Node] = {}
+        # Maps (device_name, original_interface) -> cml2_interface_name
+        self.interface_mapping: dict[tuple[str, str], str] = {}
 
     def _get_node(self, name: str) -> Node | None:
         """Get node by device name or alias."""
@@ -622,6 +625,17 @@ class CML2LabBuilder:
                 used_interfaces[ep1.device].add(intf1.slot)
             if intf2.slot is not None:
                 used_interfaces[ep2.device].add(intf2.slot)
+
+            # Store mapping from original interface name to CML2 interface name
+            # This is needed because IOL may use different interface names
+            self.interface_mapping[(ep1.device, ep1.interface)] = intf1.label
+            self.interface_mapping[(ep2.device, ep2.interface)] = intf2.label
+            log.info(
+                f"Interface mapping: {ep1.device}:{ep1.interface} -> {intf1.label}"
+            )
+            log.info(
+                f"Interface mapping: {ep2.device}:{ep2.interface} -> {intf2.label}"
+            )
 
             log.info(
                 f"Creating link: {ep1.device}:{intf1.label} <-> {ep2.device}:{intf2.label}"
@@ -844,6 +858,8 @@ class CML2Plugin(BasePlugin):
         self.lab: Lab | None = None
         self.original_testbed: Testbed | None = None
         self._pre_job_errored: bool = False
+        # Maps (device_name, original_interface) -> cml2_interface_name
+        self._interface_mapping: dict[tuple[str, str], str] = {}
 
     def pre_job(self, job) -> None:
         """
@@ -899,6 +915,9 @@ class CML2Plugin(BasePlugin):
 
             # Verify links were created correctly
             builder.verify_links()
+
+            # Store the interface mapping for testbed update
+            self._interface_mapping = builder.interface_mapping
 
             # Update testbed
             self._update_testbed()
@@ -1089,6 +1108,8 @@ class CML2Plugin(BasePlugin):
         Modifies the original testbed in place by:
         - Adding terminal_server device from CML2
         - Updating device connections with CML2 breakout info
+        - Updating topology/interfaces from CML2
+        - Writing updated testbed to testbed.actual.yaml
         """
         if not self.lab:
             return
@@ -1097,12 +1118,18 @@ class CML2Plugin(BasePlugin):
 
         # Get testbed YAML from CML2
         testbed_yaml = self.lab.get_pyats_testbed()
+        log.debug(f"CML2 testbed YAML:\n{testbed_yaml}")
 
         # Load CML2 testbed
         cml2_testbed = loader.load(io.StringIO(testbed_yaml))
 
         # Update original testbed in place with CML2 connection info
+        # Note: self.original_testbed is a reference to runtime.testbed,
+        # so modifications are reflected automatically
         self._update_testbed_in_place(self.original_testbed, cml2_testbed)
+
+        # Write updated testbed to testbed.actual.yaml in runinfo directory
+        self._write_updated_testbed_yaml()
 
         log.info("Testbed updated with CML2 connection information")
     
@@ -1190,6 +1217,256 @@ class CML2Plugin(BasePlugin):
                     
                     log.info(f"Set CML2 credentials for {device_name}: username={username}")
                     log.info(f"  Verified device: {orig_device.credentials.default.username}")
+        
+        # Update topology/interfaces from CML2 testbed
+        self._update_topology_from_cml2(original, cml2)
+
+    def _update_topology_from_cml2(self, original: Testbed, cml2: Testbed) -> None:
+        """
+        Update original testbed topology with CML2 interface information.
+        
+        CML2 may use different interface naming than the original testbed (e.g., IOL
+        only supports slot 0 interfaces like Ethernet0/0, not Ethernet1/0).
+        This method updates interface names IN PLACE using the mapping created during 
+        link creation, preserving all link associations.
+        
+        Args:
+            original: Original testbed to modify
+            cml2: CML2-generated testbed with interface info
+        """
+        log.info("Updating topology/interfaces from CML2 using interface mapping...")
+        log.info(f"  Interface mapping has {len(self._interface_mapping)} entries")
+        
+        # Check link state BEFORE renaming
+        if hasattr(original, 'links') and original.links:
+            broken_before = 0
+            for link in original.links:
+                if hasattr(link, 'interfaces'):
+                    intf_count = len(list(link.interfaces))
+                    if intf_count < 2:
+                        broken_before += 1
+                        log.warning(f"  BEFORE rename - Link {link.name} has only {intf_count} interfaces")
+            if broken_before > 0:
+                log.error(f"  Found {broken_before} broken links BEFORE renaming!")
+            else:
+                log.info(f"  All links have 2 interfaces before renaming")
+        
+        for device_name, orig_device in original.devices.items():
+            if device_name == "terminal_server":
+                continue
+            
+            # Check if device has interfaces
+            if not hasattr(orig_device, "interfaces") or not orig_device.interfaces:
+                log.info(f"  {device_name}: No interfaces found, skipping")
+                continue
+            
+            # Collect interfaces to rename (store interface object, not just name)
+            interfaces_to_rename: list[tuple[str, str, object]] = []
+            
+            for orig_intf_name, intf in list(orig_device.interfaces.items()):
+                # Look up CML2 interface name from our mapping
+                key = (device_name, orig_intf_name)
+                cml2_intf_name = self._interface_mapping.get(key)
+                
+                if cml2_intf_name and cml2_intf_name != orig_intf_name:
+                    interfaces_to_rename.append((orig_intf_name, cml2_intf_name, intf))
+            
+            # Perform in-place renaming using two-phase approach to avoid collisions
+            # Phase 1: Remove all interfaces from dict and store with temp names
+            # Phase 2: Add all interfaces back with new names
+            # This avoids overwriting when rename target matches another rename source
+            
+            # Build mapping of old_name -> (new_name, intf_object)
+            rename_map: dict[str, tuple[str, object]] = {}
+            for orig_intf_name, cml2_intf_name, intf in interfaces_to_rename:
+                rename_map[orig_intf_name] = (cml2_intf_name, intf)
+                log.info(f"    {device_name}: Renaming interface {orig_intf_name} -> {cml2_intf_name}")
+            
+            # Phase 1: Remove all old keys from dict (keep intf objects in rename_map)
+            for orig_intf_name in rename_map.keys():
+                if orig_intf_name in orig_device.interfaces:
+                    del orig_device.interfaces[orig_intf_name]
+            
+            # Phase 2: Update interface names and add back to dict with new keys
+            for orig_intf_name, (cml2_intf_name, intf) in rename_map.items():
+                # Change the interface name (preserves link association)
+                intf.name = cml2_intf_name
+                # Add back with new key
+                orig_device.interfaces[cml2_intf_name] = intf
+                
+                # Log link state for debugging
+                link = getattr(intf, 'link', None)
+                if link:
+                    log.debug(f"      Interface {cml2_intf_name} is connected to link {link.name}")
+            
+            log.info(f"  {device_name}: Updated interfaces: {list(orig_device.interfaces.keys())}")
+        
+        # Verify link-interface associations after update
+        if hasattr(original, 'links') and original.links:
+            log.info("  Verifying link-interface associations after update:")
+            broken_links = []
+            for link in original.links:
+                if hasattr(link, 'interfaces'):
+                    intf_list = list(link.interfaces)
+                    intf_info = [(getattr(i, 'name', '?'), getattr(getattr(i, 'device', None), 'name', '?')) 
+                                 for i in intf_list]
+                    # Flag links with less than 2 interfaces
+                    if len(intf_list) < 2:
+                        broken_links.append((link.name, intf_info))
+                        log.warning(f"    BROKEN Link {link.name}: only {len(intf_list)} interfaces: {intf_info}")
+                    else:
+                        log.debug(f"    Link {link.name}: {intf_info}")
+            if broken_links:
+                log.error(f"  Found {len(broken_links)} broken links with < 2 interfaces!")
+            else:
+                log.info(f"  All {len(list(original.links))} links have 2 interfaces")
+
+    def _write_updated_testbed_yaml(self) -> None:
+        """
+        Write updated testbed to testbed.actual.yaml in runinfo directory.
+        
+        This ensures the archive contains the CML2-updated testbed information
+        instead of the original dyntopo testbed.
+        """
+        try:
+            # Get the runinfo directory from runtime
+            runinfo_dir = getattr(self.runtime.runinfo, 'runinfo_dir', None)
+            if not runinfo_dir:
+                log.warning("Could not find runinfo_dir, skipping testbed.actual.yaml update")
+                return
+            
+            # Construct the testbed.actual.yaml path
+            testbed_yaml_path = os.path.join(runinfo_dir, "testbed.actual.yaml")
+            
+            # Convert testbed to dictionary for YAML serialization
+            testbed_dict = self._testbed_to_dict(self.original_testbed)
+            
+            # Write the updated testbed YAML
+            with open(testbed_yaml_path, 'w') as f:
+                yaml.safe_dump(testbed_dict, f, default_flow_style=False, sort_keys=False)
+            
+            log.info(f"Updated testbed.actual.yaml at: {testbed_yaml_path}")
+            
+        except Exception as e:
+            log.warning(f"Failed to write updated testbed.actual.yaml: {e}")
+    
+    def _testbed_to_dict(self, testbed: Testbed) -> dict:
+        """
+        Convert a pyATS Testbed object to a dictionary for YAML serialization.
+        
+        Args:
+            testbed: pyATS Testbed object
+            
+        Returns:
+            Dictionary representation of the testbed
+        """
+        result: dict[str, Any] = {}
+        
+        # Testbed metadata
+        if testbed.name:
+            result["testbed"] = {"name": testbed.name}
+        
+        # Devices section
+        devices_dict: dict[str, Any] = {}
+        for device_name, device in testbed.devices.items():
+            device_dict: dict[str, Any] = {}
+            
+            # Basic attributes
+            for attr in ["alias", "os", "platform", "type", "series", "model"]:
+                value = getattr(device, attr, None)
+                if value is not None:
+                    device_dict[attr] = value
+            
+            # Credentials
+            if hasattr(device, "credentials") and device.credentials:
+                creds_dict: dict[str, Any] = {}
+                for cred_name, cred in device.credentials.items():
+                    cred_info: dict[str, Any] = {}
+                    if hasattr(cred, "username") and cred.username:
+                        cred_info["username"] = str(cred.username)
+                    if hasattr(cred, "password") and cred.password:
+                        cred_info["password"] = str(cred.password)
+                    if cred_info:
+                        creds_dict[cred_name] = cred_info
+                if creds_dict:
+                    device_dict["credentials"] = creds_dict
+            
+            # Connections
+            if hasattr(device, "connections") and device.connections:
+                conns_dict: dict[str, Any] = {}
+                for conn_name, conn in device.connections.items():
+                    conn_dict: dict[str, Any] = {}
+                    
+                    # Handle different connection types
+                    if hasattr(conn, "host"):
+                        conn_dict["host"] = conn.host
+                    if hasattr(conn, "ip"):
+                        conn_dict["ip"] = conn.ip
+                    if hasattr(conn, "port"):
+                        conn_dict["port"] = conn.port
+                    if hasattr(conn, "protocol"):
+                        conn_dict["protocol"] = conn.protocol
+                    if hasattr(conn, "arguments") and conn.arguments:
+                        if "line" in conn.arguments:
+                            conn_dict["arguments"] = {"line": conn.arguments["line"]}
+                    
+                    # Get class if specified - handle callable/function references
+                    conn_class = getattr(conn, "class", None)
+                    if conn_class:
+                        # Convert to string representation if it's a callable
+                        if callable(conn_class):
+                            # Try to get module.name format
+                            module = getattr(conn_class, "__module__", "")
+                            name = getattr(conn_class, "__name__", "")
+                            if module and name:
+                                conn_class = f"{module}.{name}"
+                            elif name:
+                                conn_class = name
+                            else:
+                                conn_class = None  # Can't serialize
+                        if conn_class and isinstance(conn_class, str):
+                            conn_dict["class"] = conn_class
+                    
+                    if conn_dict:
+                        conns_dict[conn_name] = conn_dict
+                
+                if conns_dict:
+                    device_dict["connections"] = conns_dict
+            
+            devices_dict[device_name] = device_dict
+        
+        if devices_dict:
+            result["devices"] = devices_dict
+        
+        # Topology section
+        topology_dict: dict[str, Any] = {}
+        for device_name, device in testbed.devices.items():
+            if not hasattr(device, "interfaces") or not device.interfaces:
+                continue
+            
+            intf_dict: dict[str, Any] = {}
+            for intf_name, intf in device.interfaces.items():
+                intf_info: dict[str, Any] = {}
+                
+                # Interface attributes
+                if hasattr(intf, "alias") and intf.alias:
+                    intf_info["alias"] = intf.alias
+                if hasattr(intf, "link") and intf.link:
+                    link_name = intf.link.name if hasattr(intf.link, "name") else str(intf.link)
+                    intf_info["link"] = link_name
+                if hasattr(intf, "type") and intf.type:
+                    intf_info["type"] = intf.type
+                
+                if intf_info:
+                    intf_dict[intf_name] = intf_info
+            
+            if intf_dict:
+                topology_dict[device_name] = {"interfaces": intf_dict}
+        
+        if topology_dict:
+            result["topology"] = topology_dict
+        
+        return result
 
     def _merge_testbeds(self, original: Testbed, cml2: Testbed) -> Testbed:
         """
