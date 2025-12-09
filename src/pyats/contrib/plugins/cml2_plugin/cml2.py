@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from pyats.easypy.plugins.bases import BasePlugin
 from pyats.log.utils import banner
 from pyats.topology import loader
+from pyats.topology.loader import TestbedFileLoader
 
 if TYPE_CHECKING:
     from pyats.topology import Device, Testbed
@@ -154,39 +155,78 @@ class LinkInfo:
 # =============================================================================
 
 
-def parse_interface_slot(interface_name: str) -> int | None:
+def parse_interface_slot(interface_name: str, device_type: str | None = None) -> int | None:
     """
-    Parse interface name to extract slot number.
+    Parse interface name to extract a CML2 interface index.
 
-    Examples:
-        Ethernet0/0 -> 0
-        Ethernet0/1 -> 1
-        GigabitEthernet0/0/0/0 -> 0
-        Ethernet1/1 -> 1 (second number)
-        mgmt0 -> None (management interface)
+    For CML2, interfaces are indexed sequentially (0, 1, 2, ...).
+    The calculation depends on the device type and interface naming convention.
+
+    For IOL devices (Ethernet slot/port format):
+        Interface naming: EthernetX/Y where X=slot, Y=port
+        CML2 index formula: cml2_index = slot * 4 + port
+        (IOL typically has 4 ports per slot)
+        
+        Examples:
+            Ethernet0/0 -> index 0  (slot=0, port=0: 0*4 + 0 = 0)
+            Ethernet0/1 -> index 1  (slot=0, port=1: 0*4 + 1 = 1)
+            Ethernet1/0 -> index 4  (slot=1, port=0: 1*4 + 0 = 4)
+            Ethernet2/0 -> index 8  (slot=2, port=0: 2*4 + 0 = 8)
+
+    For other devices (GigabitEthernet, etc.):
+        Use the last number as the index (original behavior)
+        
+        Examples:
+            GigabitEthernet0/0 -> index 0
+            GigabitEthernet0/1 -> index 1
+            GigabitEthernet1 -> index 1
 
     Args:
-        interface_name: Interface name string
+        interface_name: Interface name string (e.g., "Ethernet1/0")
+        device_type: Device type (e.g., "iol", "iosv", "csr1000v"). 
+                     If None, auto-detect based on interface name.
 
     Returns:
-        Slot number or None if cannot be determined
+        CML2 interface index or None if cannot be determined
     """
     # Skip loopback and management interfaces
     lower_name = interface_name.lower()
     if lower_name.startswith(("loopback", "loop", "lo", "mgmt", "management")):
         return None
 
-    # Try to extract slot from common patterns
-    # Pattern: Ethernet0/0, GigabitEthernet0/0, etc.
+    # Determine if this is an IOL-style interface
+    # IOL uses "Ethernet" (not GigabitEthernet) with slot/port format
+    is_iol = False
+    if device_type and device_type.lower() == "iol":
+        is_iol = True
+    elif lower_name.startswith("ethernet") and not lower_name.startswith("ethernet0"):
+        # If interface is like Ethernet1/0, Ethernet2/0 (non-zero slot), likely IOL
+        is_iol = True
+    elif lower_name.startswith("ethernet") and "/" in interface_name:
+        # Ethernet with slot/port format - check device_type or assume IOL if slot > 0
+        is_iol = True
+
+    # Try to extract slot and port from common patterns
+    # Pattern: Ethernet0/0, GigabitEthernet0/0, Ethernet1/0, etc.
     match = re.search(r"(\d+)[/:](\d+)(?:[/:](\d+))?(?:[/:](\d+))?$", interface_name)
     if match:
-        # Use the second-to-last number as slot for most cases
         numbers = [int(g) for g in match.groups() if g is not None]
         if len(numbers) >= 2:
-            return numbers[-1]  # Last number is typically the port/slot
+            slot = numbers[0]
+            port = numbers[1]
+            
+            if is_iol:
+                # IOL: Compute CML2 index = slot * 4 + port
+                cml2_index = slot * 4 + port
+                log.debug(f"parse_interface_slot (IOL): {interface_name} -> slot={slot}, port={port}, cml2_index={cml2_index}")
+                return cml2_index
+            else:
+                # Non-IOL: Use just the port number (last number)
+                log.debug(f"parse_interface_slot (non-IOL): {interface_name} -> port={port}")
+                return port
         return numbers[0]
 
-    # Pattern: eth0, ens0, etc.
+    # Pattern: eth0, ens0, GigabitEthernet1, etc.
     match = re.search(r"(\d+)$", interface_name)
     if match:
         return int(match.group(1))
@@ -410,7 +450,53 @@ class TestbedParser:
             log.info("No links found in testbed")
             return self._links
 
-        # Iterate through testbed links
+        # Track slot assignments for interfaces with unparseable names (alias-style like 'leaf2_infra_intf')
+        # Maps (device_name, interface_name) -> assigned_slot
+        interface_slot_map: dict[tuple[str, str], int] = {}
+        device_next_slot: dict[str, int] = defaultdict(int)
+        
+        # First pass: collect all interfaces and determine slots
+        # - For parseable names (Ethernet1/0), extract slot from name
+        # - For alias-style names, assign sequential slots per device
+        for link in self.testbed.links:
+            for intf in link.interfaces:
+                device_name = intf.device.name
+                intf_name = intf.name
+                
+                if device_name not in self.get_devices():
+                    continue
+                
+                # Skip if we've already assigned a slot to this interface
+                key = (device_name, intf_name)
+                if key in interface_slot_map:
+                    continue
+                
+                device_type = getattr(intf.device, 'type', None) or getattr(intf.device, 'platform', None)
+                slot = parse_interface_slot(intf_name, device_type)
+                
+                if slot is not None:
+                    interface_slot_map[key] = slot
+                    # Track highest slot seen for this device
+                    device_next_slot[device_name] = max(device_next_slot[device_name], slot + 1)
+        
+        # Second pass: assign slots to interfaces that couldn't be parsed
+        for link in self.testbed.links:
+            for intf in link.interfaces:
+                device_name = intf.device.name
+                intf_name = intf.name
+                
+                if device_name not in self.get_devices():
+                    continue
+                
+                key = (device_name, intf_name)
+                if key not in interface_slot_map:
+                    # Assign next available slot for this device
+                    slot = device_next_slot[device_name]
+                    device_next_slot[device_name] += 1
+                    interface_slot_map[key] = slot
+                    log.debug(f"  {device_name}:{intf_name} -> assigned slot={slot} (auto)")
+
+        # Third pass: create links using the slot assignments
         for link in self.testbed.links:
             endpoints = []
             
@@ -423,7 +509,10 @@ class TestbedParser:
                 if device_name not in self.get_devices():
                     continue
                 
-                slot = parse_interface_slot(intf_name)
+                key = (device_name, intf_name)
+                slot = interface_slot_map.get(key)
+                log.debug(f"  {device_name}:{intf_name} -> slot={slot}")
+                
                 endpoints.append(
                     LinkEndpoint(
                         device=device_name,
@@ -574,6 +663,54 @@ class CML2LabBuilder:
         # Track used interfaces per node
         used_interfaces: dict[str, set[int]] = defaultdict(set)
 
+        # Phase 1: Calculate required slots for each node and pre-add interfaces
+        log.info("Phase 1: Ensuring all required interfaces exist...")
+        required_slots: dict[str, set[int]] = defaultdict(set)
+        
+        for link_info in self.links:
+            if len(link_info.endpoints) != 2:
+                continue
+            for ep in link_info.endpoints:
+                if ep.slot is not None:
+                    required_slots[ep.device].add(ep.slot)
+        
+        # Pre-add interfaces for required slots
+        for device_name, slots in required_slots.items():
+            node = self._get_node(device_name)
+            if not node:
+                continue
+            
+            # Get existing slots
+            existing_slots = {intf.slot for intf in node.interfaces() if intf.slot is not None}
+            missing_slots = slots - existing_slots
+            
+            if missing_slots:
+                max_needed = max(missing_slots)
+                log.info(f"  {device_name}: needs slots up to {max_needed}, has {sorted(existing_slots)}")
+                
+                # Add interfaces until we have all required slots
+                # CML2 adds interfaces sequentially, so add enough to cover max slot
+                current_max = max(existing_slots) if existing_slots else -1
+                while current_max < max_needed:
+                    new_intf = self._add_interface_to_node(node)
+                    if new_intf and new_intf.slot is not None:
+                        current_max = new_intf.slot
+                    else:
+                        break
+        
+        # Sync to ensure all interfaces are available
+        if self.lab:
+            self.lab.sync()
+
+        # Debug: Log available interfaces for each node after pre-adding
+        log.info("Available CML2 interfaces per node (after pre-adding):")
+        for device_name, node in self.node_map.items():
+            intfs = list(node.interfaces())
+            intf_info = [(i.label, i.slot, i.connected) for i in intfs]
+            log.info(f"  {device_name}: {len(intfs)} interfaces - {intf_info[:12]}...")
+
+        # Phase 2: Create links with proper slot matching
+        log.info("Phase 2: Creating links...")
         for link_info in self.links:
             if len(link_info.endpoints) != 2:
                 continue
@@ -592,26 +729,33 @@ class CML2LabBuilder:
             intf2: Interface | None = None
 
             # Try to match by slot
+            log.debug(f"Link {link_info.link_id}: ep1={ep1.device}:{ep1.interface}(slot={ep1.slot}), ep2={ep2.device}:{ep2.interface}(slot={ep2.slot})")
             if ep1.slot is not None:
                 intf1 = self._get_interface_by_slot(node1, ep1.slot)
+                if intf1:
+                    log.debug(f"  Found {ep1.device} slot {ep1.slot} -> {intf1.label}")
+                else:
+                    log.debug(f"  No interface found for {ep1.device} slot {ep1.slot}")
             if ep2.slot is not None:
                 intf2 = self._get_interface_by_slot(node2, ep2.slot)
+                if intf2:
+                    log.debug(f"  Found {ep2.device} slot {ep2.slot} -> {intf2.label}")
+                else:
+                    log.debug(f"  No interface found for {ep2.device} slot {ep2.slot}")
 
-            # Fall back to next available interface
+            # Fall back to next available interface (only if slot matching failed)
             if intf1 is None:
                 intf1 = self._get_next_available_interface(
                     node1, used_interfaces[ep1.device]
                 )
+                if intf1:
+                    log.warning(f"  Fallback: {ep1.device}:{ep1.interface} using next available -> {intf1.label} (slot {intf1.slot})")
             if intf2 is None:
                 intf2 = self._get_next_available_interface(
                     node2, used_interfaces[ep2.device]
                 )
-
-            # If still no interface available, try to add new interfaces
-            if intf1 is None:
-                intf1 = self._add_interface_to_node(node1)
-            if intf2 is None:
-                intf2 = self._add_interface_to_node(node2)
+                if intf2:
+                    log.warning(f"  Fallback: {ep2.device}:{ep2.interface} using next available -> {intf2.label} (slot {intf2.slot})")
 
             if not intf1 or not intf2:
                 log.warning(
@@ -984,8 +1128,18 @@ class CML2Plugin(BasePlugin):
                 "CML2 password is required (--cml2-password or CML2_PASSWORD env var)"
             )
 
+        # Load testbed if not already loaded (e.g., when --skip-bringup is used)
         if not self.runtime.testbed:
-            errors.append("Testbed is required")
+            testbed = self._load_testbed()
+            if testbed:
+                # Set testbed on job object (runtime.testbed is read-only property)
+                if self.runtime.job:
+                    self.runtime.job.testbed = testbed
+                    log.info(f"Loaded testbed: {testbed.name}")
+                else:
+                    errors.append("Cannot set testbed: runtime.job is None")
+            else:
+                errors.append("Testbed is required but could not be loaded")
 
         if errors:
             for error in errors:
@@ -993,6 +1147,147 @@ class CML2Plugin(BasePlugin):
             return False
 
         return True
+
+    def _load_testbed(self) -> "Testbed | None":
+        """
+        Load testbed from file if not already loaded.
+        
+        Tries to load from:
+        1. --logical-testbed-file argument (for dyntopo logical testbeds)
+        2. --testbed-file argument (standard testbed)
+        
+        Returns:
+            Loaded Testbed object or None if no testbed file specified
+        """
+        # Try logical testbed file first (for dyntopo)
+        logical_tb_file = getattr(self.runtime.args, 'logical_testbed_file', None)
+        if logical_tb_file and os.path.isfile(logical_tb_file):
+            log.info(f"Loading logical testbed from: {logical_tb_file}")
+            try:
+                # Use TestbedFileLoader to load as raw dict first (handles dyntopo extensions)
+                # then convert to Testbed object
+                raw_config = TestbedFileLoader().load_arbitrary(logical_tb_file)
+                
+                # Transform logical testbed: use actual_name for interface names
+                # and strip dyntopo-specific keys
+                self._transform_logical_testbed(raw_config)
+                
+                # Now load the cleaned config as a proper Testbed object
+                return loader.load(raw_config)
+            except Exception as e:
+                log.warning(f"Failed to load logical testbed: {e}")
+        
+        # Try standard testbed file
+        testbed_file = getattr(self.runtime.args, 'testbed_file', None)
+        if not testbed_file:
+            # Also check job's testbed_file
+            testbed_file = getattr(getattr(self.runtime, 'job', None), 'testbed_file', None)
+        
+        if testbed_file and os.path.isfile(testbed_file):
+            log.info(f"Loading testbed from: {testbed_file}")
+            try:
+                return loader.load(testbed_file)
+            except Exception as e:
+                log.error(f"Failed to load testbed: {e}")
+                return None
+        
+        log.warning("No testbed file found to load")
+        return None
+
+    # OS types that should be removed from logical testbed (can't be parsed by Genie)
+    SKIP_OS_FOR_TRANSFORM = {
+        'pagent', 'trex', 'ixia', 'ixiangpf', 'ixianative', 'spirent', 'stc',
+    }
+    
+    def _transform_logical_testbed(self, config: dict) -> None:
+        """
+        Transform logical testbed config to be loadable by pyATS.
+        
+        This method:
+        1. Removes devices with unsupported OS types (pagent, traffic generators)
+        2. Strips dyntopo-specific keys (logical, ha_requested, etc.)
+        3. Renames interfaces from aliases to actual_name values in topology section
+        
+        Args:
+            config: Raw testbed config dict (modified in place)
+        """
+        # First, identify and remove devices with unsupported OS types
+        # These devices (like pagent/traffic generators) have custom interface names
+        # that Genie can't parse, and they won't be created in CML2 anyway
+        devices_to_remove = set()
+        if 'devices' in config:
+            for dev_name, dev_config in config['devices'].items():
+                if isinstance(dev_config, dict):
+                    dev_os = dev_config.get('os', '').lower()
+                    dev_type = dev_config.get('type', '').lower()
+                    # Check if this device should be skipped
+                    if dev_os in self.SKIP_OS_FOR_TRANSFORM or dev_type in {'tgn', 'traffic_generator', 'trafficgen'}:
+                        devices_to_remove.add(dev_name)
+                        log.info(f"Removing device '{dev_name}' from logical testbed (OS: {dev_os}, type: {dev_type})")
+            
+            # Remove the devices
+            for dev_name in devices_to_remove:
+                config['devices'].pop(dev_name, None)
+        
+        # Also remove these devices from topology section
+        if 'topology' in config:
+            for dev_name in devices_to_remove:
+                config['topology'].pop(dev_name, None)
+        
+        # Strip dyntopo-specific keys from remaining devices
+        # These keys are used by dyntopo but not recognized by pyATS testbed loader
+        DYNTOPO_DEVICE_KEYS = [
+            'logical',           # Marks device as logical (dyntopo)
+            'ha_requested',      # HA mode request (dyntopo)
+            'logical_testbed_file',  # Reference to logical testbed
+            'local',             # Local IOL process arguments (dyntopo)
+            'vcpu',              # Virtual CPU allocation
+            'memory',            # Memory allocation
+        ]
+        if 'devices' in config:
+            for dev_name, dev_config in config['devices'].items():
+                if isinstance(dev_config, dict):
+                    for key in DYNTOPO_DEVICE_KEYS:
+                        dev_config.pop(key, None)
+        
+        # Transform topology section: rename interface aliases to actual_name
+        if 'topology' in config:
+            new_topology = {}
+            for dev_name, dev_topology in config['topology'].items():
+                if not isinstance(dev_topology, dict):
+                    new_topology[dev_name] = dev_topology
+                    continue
+                    
+                # Check if 'interfaces' key exists, otherwise treat keys as interface names
+                if 'interfaces' in dev_topology:
+                    interfaces = dev_topology.get('interfaces', {})
+                else:
+                    # Top-level keys are interface aliases
+                    interfaces = dev_topology
+                    dev_topology = {'interfaces': {}}
+                
+                new_interfaces = {}
+                for intf_alias, intf_config in interfaces.items():
+                    if not isinstance(intf_config, dict):
+                        new_interfaces[intf_alias] = intf_config
+                        continue
+                    
+                    # Use actual_name if available, otherwise keep alias
+                    actual_name = intf_config.pop('actual_name', None)
+                    if actual_name:
+                        # Store alias for reference
+                        intf_config['alias'] = intf_alias
+                        new_interfaces[actual_name] = intf_config
+                    else:
+                        new_interfaces[intf_alias] = intf_config
+                
+                if 'interfaces' in config['topology'].get(dev_name, {}):
+                    new_topology[dev_name] = dev_topology
+                    new_topology[dev_name]['interfaces'] = new_interfaces
+                else:
+                    new_topology[dev_name] = new_interfaces
+            
+            config['topology'] = new_topology
 
     def _display_topology_summary(self) -> None:
         """Display a summary table of the CML2 topology."""
@@ -1327,16 +1622,30 @@ class CML2Plugin(BasePlugin):
         
         This ensures the archive contains the CML2-updated testbed information
         instead of the original dyntopo testbed.
+        
+        When --skip-bringup is used, dyntopo doesn't create testbed.actual.yaml,
+        so we create it here with the CML2-updated testbed.
         """
         try:
             # Get the runinfo directory from runtime
-            runinfo_dir = getattr(self.runtime.runinfo, 'runinfo_dir', None)
+            runinfo_dir = getattr(self.runtime, 'directory', None)
             if not runinfo_dir:
-                log.warning("Could not find runinfo_dir, skipping testbed.actual.yaml update")
+                runinfo_dir = getattr(getattr(self.runtime, 'runinfo', None), 'runinfo_dir', None)
+            if not runinfo_dir:
+                log.warning("Could not find runinfo directory, skipping testbed.actual.yaml update")
                 return
             
             # Construct the testbed.actual.yaml path
             testbed_yaml_path = os.path.join(runinfo_dir, "testbed.actual.yaml")
+            
+            # Check if file exists - if it does and has content, it was created by dyntopo
+            if os.path.exists(testbed_yaml_path):
+                with open(testbed_yaml_path, 'r') as f:
+                    content = f.read().strip()
+                if content:
+                    log.info(f"testbed.actual.yaml already exists with content, updating...")
+            else:
+                log.info(f"Creating testbed.actual.yaml (not created by dyntopo)...")
             
             # Convert testbed to dictionary for YAML serialization
             testbed_dict = self._testbed_to_dict(self.original_testbed)
@@ -1345,10 +1654,12 @@ class CML2Plugin(BasePlugin):
             with open(testbed_yaml_path, 'w') as f:
                 yaml.safe_dump(testbed_dict, f, default_flow_style=False, sort_keys=False)
             
-            log.info(f"Updated testbed.actual.yaml at: {testbed_yaml_path}")
+            log.info(f"Wrote testbed.actual.yaml at: {testbed_yaml_path}")
             
         except Exception as e:
             log.warning(f"Failed to write updated testbed.actual.yaml: {e}")
+            import traceback
+            log.debug(traceback.format_exc())
     
     def _testbed_to_dict(self, testbed: Testbed) -> dict:
         """
@@ -1398,10 +1709,11 @@ class CML2Plugin(BasePlugin):
                     conn_dict: dict[str, Any] = {}
                     
                     # Handle different connection types
-                    if hasattr(conn, "host"):
-                        conn_dict["host"] = conn.host
-                    if hasattr(conn, "ip"):
-                        conn_dict["ip"] = conn.ip
+                    # Convert host/ip to string to handle IPv4Address/IPv6Address objects
+                    if hasattr(conn, "host") and conn.host:
+                        conn_dict["host"] = str(conn.host)
+                    if hasattr(conn, "ip") and conn.ip:
+                        conn_dict["ip"] = str(conn.ip)
                     if hasattr(conn, "port"):
                         conn_dict["port"] = conn.port
                     if hasattr(conn, "protocol"):
