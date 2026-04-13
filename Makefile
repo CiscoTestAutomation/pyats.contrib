@@ -20,7 +20,7 @@ help:
 	@echo ""
 	@echo "     --- common actions ---"
 	@echo ""
-	@echo " check                          check setup.py content"
+	@echo " check                          validate build configuration"
 	@echo " clean                          remove the build directory ($(BUILD_DIR))"
 	@echo " test                           run all unit tests"
 	@echo " help                           display this help"
@@ -33,7 +33,7 @@ help:
 	@echo ""
 
 install_build_deps:
-	@pip install --upgrade pip setuptools wheel
+	@pip install --upgrade pip build
 
 uninstall_build_deps:
 	@echo "nothing to do"
@@ -43,7 +43,9 @@ clean:
 	@echo "--------------------------------------------------------------------"
 	@echo "Removing make directory: $(BUILD_DIR)"
 	@rm -rf $(BUILD_DIR)
-	@$(PYTHON) setup.py clean
+	@find . -type f -name "*.pyc" -delete
+	@find . -type d -name "__pycache__" -prune -exec rm -rf {} +
+	@find . -type d -name "build" -prune -exec rm -rf {} +
 	@echo "Removing *.pyc *.c and __pycache__/ files"
 	@find . -type f -name "*.pyc" | xargs rm -vrf
 	@find . -type f -name "*.c" | xargs rm -vrf
@@ -57,8 +59,8 @@ develop:
 	@echo "--------------------------------------------------------------------"
 	@echo "Setting up development environment"
 	@pip uninstall -y pyats.contrib || true
-	@pip install $(DEPENDENCIES)
-	@$(PYTHON) setup.py develop --no-deps -q
+	@pip install $(DEPENDENCIES) build
+	@$(PYTHON) -m pip install -e . --no-deps
 	@echo ""
 	@echo "Done."
 	@echo ""
@@ -67,7 +69,7 @@ undevelop:
 	@echo ""
 	@echo "--------------------------------------------------------------------"
 	@echo "Removing development environment"
-	@$(PYTHON) setup.py develop -q --no-deps --uninstall
+	@$(PYTHON) -m pip uninstall -y $(PKG_NAME)
 	@echo ""
 	@echo "Done."
 	@echo ""
@@ -79,18 +81,17 @@ all: package
 
 package: 
 	@echo ""
-	@$(PYTHON) setup.py bdist_wheel --dist-dir=$(DIST_DIR)
-	@$(PYTHON) setup.py sdist --dist-dir=$(DIST_DIR)
+	@$(PYTHON) -m build --wheel --outdir=$(DIST_DIR)
 	@echo "Done."
 	@echo ""
 
 check:
 	@echo ""
 	@echo "--------------------------------------------------------------------"
-	@echo "Checking setup.py consistency..."
+	@echo "Checking build configuration..."
 	@echo ""
 
-	@$(PYTHON) setup.py check
+	@$(PYTHON) -m build --wheel --outdir=$(DIST_DIR)
 
 	@echo "Done."
 	@echo ""

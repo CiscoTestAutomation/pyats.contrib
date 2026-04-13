@@ -1,0 +1,67 @@
+[build-system]
+requires = [
+    "meson-python",
+    "meson>=1.10.0",
+    "ninja",
+]
+build-backend = "mesonpy"
+
+[project]
+name = "pyats.contrib"
+version = "26.3"
+description = "Open source package for pyATS framework extensions."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Cisco Systems Inc.", email = "pyats-support-ext@cisco.com" },
+]
+keywords = [
+    "genie",
+    "pyats",
+    "test automation",
+    "open source",
+    "contrib",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Telecommunications Industry",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "requests",
+    "requests-toolbelt",
+    "xlrd==1.2",
+    "xlwt",
+    "xlsxwriter",
+]
+
+[project.entry-points."pyats.topology.loader"]
+ansible = "pyats.contrib.creators.ansible:Ansible"
+file = "pyats.contrib.creators.file:File"
+interactive = "pyats.contrib.creators.interactive:Interactive"
+netbox = "pyats.contrib.creators.netbox:Netbox"
+template = "pyats.contrib.creators.template:Template"
+topology = "pyats.contrib.creators.topology:Topology"
+yamltemplate = "pyats.contrib.creators.yamltemplate:Yamltemplate"
+
+[project.entry-points."pyats.easypy.plugins"]
+webex = "pyats.contrib.plugins.webex_plugin.webex:webex_plugin"
+topoup = "pyats.contrib.plugins.topoup_plugin.topoup:topology_up_plugin"
+
+[project.urls]
+Homepage = "https://developer.cisco.com/pyats/"
+
+[tool.meson-python.wheel]
+include = [
+    "*.py",
+]
