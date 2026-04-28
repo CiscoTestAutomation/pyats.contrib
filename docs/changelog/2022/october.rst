@@ -1,8 +1,8 @@
 October 2022
-===========
+============
 
 Ocotber 25th
------------
+------------
 
 .. csv-table:: Module Versions
     :header: "Modules", "Versions"
