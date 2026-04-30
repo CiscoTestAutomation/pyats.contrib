@@ -1,8 +1,8 @@
 October 2021
-===========
+============
 
 October 26th
------------
+------------
 
 .. csv-table:: Module Versions
     :header: "Modules", "Versions"

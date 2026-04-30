@@ -1,8 +1,8 @@
 january 2024
-===========
+============
 
 january 30th
------------
+------------
 
 .. csv-table:: Module Versions
     :header: "Modules", "Versions"
