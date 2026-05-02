@@ -4,12 +4,19 @@ PKG_NAME	  = pyats.contrib
 BUILD_DIR     = $(shell pwd)/__build__
 DIST_DIR      = $(BUILD_DIR)/dist
 PYTHON		  = python3
+PIP           = $(PYTHON) -m pip
+MESON_HELPER  = cisco-meson
 PROD_USER     = pyadm@pyats-ci
 STAGING_PKGS  = /auto/pyats/staging/packages
 STAGING_EXT_PKGS  = /auto/pyats/staging/packages
 
 # xlrd==1.2 because support for '.xlsx' files was dropped in later versions
 DEPENDENCIES = requests requests-toolbelt xlrd==1.2 xlwt xlsxwriter
+BUILD_DEPENDENCIES = meson-python 'meson>=1.10.0' ninja build 'patchelf>=0.11.0; sys_platform == "linux"'
+SITE_PACKAGES = $(shell $(PYTHON) -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+DEVELOP_PATH_FILE = $(SITE_PACKAGES)/pyats-contrib-dev-path.pth
+EDITABLE_PTH_FILE = $(SITE_PACKAGES)/pyats-contrib-editable.pth
+EDITABLE_LOADER_FILE = $(SITE_PACKAGES)/_pyats_contrib_editable_loader.py
 
 .PHONY: check help clean test package develop undevelop all \
         install_build_deps uninstall_build_deps distribute_staging\
@@ -33,7 +40,7 @@ help:
 	@echo ""
 
 install_build_deps:
-	@pip install --upgrade pip build
+	@$(PIP) install --upgrade pip $(BUILD_DEPENDENCIES)
 
 uninstall_build_deps:
 	@echo "nothing to do"
@@ -58,9 +65,9 @@ develop:
 	@echo ""
 	@echo "--------------------------------------------------------------------"
 	@echo "Setting up development environment"
-	@pip uninstall -y pyats.contrib || true
-	@pip install $(DEPENDENCIES) build
-	@$(PYTHON) -m pip install -e . --no-deps
+	@$(PIP) uninstall -y pyats.contrib || true
+	@$(PIP) install --no-build-isolation $(DEPENDENCIES) $(BUILD_DEPENDENCIES)
+	@$(MESON_HELPER) editable sync --project-root "$(CURDIR)" --source-path "$(CURDIR)/src" --pth-file "$(DEVELOP_PATH_FILE)" --remove-path "$(EDITABLE_PTH_FILE)" --remove-path "$(EDITABLE_LOADER_FILE)"
 	@echo ""
 	@echo "Done."
 	@echo ""
@@ -69,7 +76,8 @@ undevelop:
 	@echo ""
 	@echo "--------------------------------------------------------------------"
 	@echo "Removing development environment"
-	@$(PYTHON) -m pip uninstall -y $(PKG_NAME)
+	@$(PYTHON) -m pip uninstall -y $(PKG_NAME) || true
+	@$(MESON_HELPER) editable clean --project-root "$(CURDIR)" --pth-file "$(DEVELOP_PATH_FILE)" --remove-path "$(EDITABLE_PTH_FILE)" --remove-path "$(EDITABLE_LOADER_FILE)"
 	@echo ""
 	@echo "Done."
 	@echo ""
@@ -81,7 +89,7 @@ all: package
 
 package: 
 	@echo ""
-	@$(PYTHON) -m build --wheel --outdir=$(DIST_DIR)
+	@$(PYTHON) -m build --no-isolation --wheel --outdir=$(DIST_DIR)
 	@echo "Done."
 	@echo ""
 
@@ -91,7 +99,7 @@ check:
 	@echo "Checking build configuration..."
 	@echo ""
 
-	@$(PYTHON) -m build --wheel --outdir=$(DIST_DIR)
+	@$(PYTHON) -m build --no-isolation --wheel --outdir=$(DIST_DIR)
 
 	@echo "Done."
 	@echo ""
