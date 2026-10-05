@@ -1,3 +1,5 @@
+import json
+
 try:
     from ansible.parsing.dataloader import DataLoader
     from ansible.inventory.manager import InventoryManager
@@ -145,4 +147,8 @@ class Ansible(TestbedCreator):
                                         category['vars']['ansible_network_os'])
                 device.setdefault('type', device_type)
 
-        return testbed if len(testbed['devices']) > 0 else None
+        if not testbed['devices']:
+            return None
+
+        # Convert Ansible's tagged values to plain types before YAML serialization.
+        return json.loads(json.dumps(testbed))
