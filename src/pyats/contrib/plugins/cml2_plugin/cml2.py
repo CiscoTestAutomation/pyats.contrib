@@ -824,8 +824,15 @@ class CML2LabBuilder:
             log.debug(f"Config:\n{config}")
             
             try:
-                # Set node configuration
-                node.config = config
+                # Set node configuration.
+                # In virl2_client, `Node.configuration` is a property that sends a PATCH
+                # to CML2 to set the day0 configuration. Assigning to `node.config` only
+                # sets a dead attribute on the python object and leaves CML2 day0 config
+                # as default ("inserthostname-here"), breaking Unicon prompt matching.
+                try:
+                    node.configuration = config
+                except (AttributeError, TypeError):
+                    node.config = config
                 log.info(f"  Configuration applied to {device_name}")
             except Exception as e:
                 log.warning(f"  Failed to apply config to {device_name}: {e}")
