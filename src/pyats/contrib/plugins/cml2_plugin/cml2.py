@@ -12,6 +12,7 @@ Requirements:
 from __future__ import annotations
 
 import io
+import ipaddress
 import logging
 import math
 import os
@@ -117,6 +118,68 @@ CML2_DEFAULT_CREDENTIALS: dict[str, dict[str, str]] = {
 
 
 # =============================================================================
+# Tier Mapping & Parsing
+# =============================================================================
+
+TIER_NAME_MAP: dict[str, int] = {
+    # Tier 1: ISP / External Transit / WAN
+    "isp": 1,
+    "external": 1,
+    "transit": 1,
+    "wan": 1,
+    # Tier 2: Edge / Border / ASBR / Leaf
+    "edge": 2,
+    "border": 2,
+    "asbr": 2,
+    "leaf": 2,
+    # Tier 3: Core / Route Reflector / Spine
+    "core": 3,
+    "spine": 3,
+    "rr": 3,
+    "reflector": 3,
+    "route_reflector": 3,
+    # Tier 4: Client / Access / Internal / Distribution
+    "client": 4,
+    "access": 4,
+    "internal": 4,
+    "distribution": 4,
+}
+
+
+def parse_tier(tier_val: Any, device_name: str = "device") -> int | None:
+    """
+    Parses a tier specification into an integer (1-indexed architectural tier).
+    Supports integers, numeric strings, and architectural role names (case-insensitive, trimmed).
+    Raises ValueError for unrecognized strings or invalid types.
+
+    Args:
+        tier_val: Integer, numeric string, or architectural tier name.
+        device_name: Name of device for error context.
+
+    Returns:
+        int | None: Resolved integer tier or None if tier is None.
+    """
+    if tier_val is None:
+        return None
+    if isinstance(tier_val, int):
+        return tier_val
+    if isinstance(tier_val, str):
+        cleaned = tier_val.strip().lower()
+        if cleaned.isdigit():
+            return int(cleaned)
+        if cleaned in TIER_NAME_MAP:
+            return TIER_NAME_MAP[cleaned]
+        raise ValueError(
+            f"Invalid string tier '{tier_val}' for device '{device_name}'. "
+            f"Expected integer or one of {sorted(TIER_NAME_MAP.keys())}."
+        )
+    try:
+        return int(tier_val)
+    except Exception:
+        raise ValueError(f"Invalid tier type '{type(tier_val)}' for device '{device_name}'.")
+
+
+# =============================================================================
 # Data Classes
 # =============================================================================
 
@@ -131,6 +194,20 @@ class DeviceInfo:
     type: str
     alias: str | None = None
     credentials: dict[str, Any] = field(default_factory=dict)
+    # Hybrid layout and annotation extensions:
+    x: int | float | None = None
+    y: int | float | None = None
+    tier: int | None = None
+    role: str | None = None
+    group: str | None = None
+    callout: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def callout_text(self) -> str | None:
+        """Return custom callout text string if defined."""
+        if isinstance(self.callout, dict):
+            return self.callout.get("text")
+        return None
 
 
 @dataclass
@@ -153,6 +230,30 @@ class LinkInfo:
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+
+def get_custom_cml2(obj: Any) -> dict[str, Any]:
+    """
+    Safely extract the 'cml2' metadata dictionary from a pyATS Testbed, Device, or Link.
+
+    Args:
+        obj: pyATS Testbed, Device, or Link instance.
+
+    Returns:
+        dict[str, Any]: The cml2 metadata dictionary, or an empty dict if not defined.
+    """
+    if obj is None:
+        return {}
+    custom = getattr(obj, "custom", None)
+    if custom is None:
+        return {}
+    if isinstance(custom, dict):
+        cml2_meta = custom.get("cml2", {})
+    else:
+        cml2_meta = getattr(custom, "cml2", {})
+    if isinstance(cml2_meta, dict):
+        return dict(cml2_meta)
+    return {}
 
 
 def parse_interface_slot(interface_name: str, device_type: str | None = None) -> int | None:
@@ -261,6 +362,569 @@ def calculate_node_positions(node_count: int, radius: int = 200) -> list[tuple[i
     return positions
 
 
+def calculate_hierarchical_positions(
+    devices: dict[str, DeviceInfo],
+    tier_spacing: int = 180,
+    node_spacing: int = 360,
+    center_x: int = 0,
+    center_y: int = 20,
+) -> dict[str, tuple[int, int]]:
+    """
+    Computes (x, y) coordinates for devices organized by architectural tier.
+
+    Devices with explicit (x, y) coordinates retain their exact values.
+    Devices lacking explicit coordinates are grouped by tier (defaulting to Tier 2)
+    and spaced symmetrically across the center axis.
+
+    Args:
+        devices: Mapping of device names to DeviceInfo instances.
+        tier_spacing: Vertical pixel distance between adjacent tiers.
+        node_spacing: Horizontal pixel distance between nodes within the same tier.
+        center_x: Global horizontal midpoint offset.
+        center_y: Global vertical midpoint offset.
+
+    Returns:
+        dict[str, tuple[int, int]]: Mapping of device names to (x, y) coordinate tuples.
+    """
+    if not devices:
+        return {}
+
+    result: dict[str, tuple[int, int]] = {}
+    tiers: dict[int, list[str]] = defaultdict(list)
+
+    # Separate devices with explicit coordinates from tier-placed devices
+    for name, dev in devices.items():
+        dev_x = getattr(dev, "x", None)
+        dev_y = getattr(dev, "y", None)
+        if dev_x is not None and dev_y is not None:
+            result[name] = (int(round(dev_x)), int(round(dev_y)))
+        else:
+            dev_tier = getattr(dev, "tier", None)
+            t = dev_tier if dev_tier is not None else 2
+            tiers[t].append(name)
+
+    if not tiers:
+        return result
+
+    sorted_tiers = sorted(tiers.keys())
+    total_tiers = len(sorted_tiers)
+    start_y = center_y - ((total_tiers - 1) * tier_spacing) // 2
+
+    for tier_idx, t in enumerate(sorted_tiers):
+        tier_nodes = sorted(tiers[t])
+        y_pos = start_y + (tier_idx * tier_spacing)
+        n_nodes = len(tier_nodes)
+        total_width = (n_nodes - 1) * node_spacing
+        start_x = center_x - (total_width // 2)
+
+        for i, name in enumerate(tier_nodes):
+            x_pos = start_x + (i * node_spacing)
+            result[name] = (int(round(x_pos)), int(round(y_pos)))
+
+    return result
+
+
+def resolve_node_positions(
+    devices: dict[str, DeviceInfo],
+    testbed_cml2: dict[str, Any] | None = None,
+) -> dict[str, tuple[int, int]]:
+    """
+    Resolves node positions by checking layout configuration and device metadata.
+    Guarantees 100% backward compatibility when custom.cml2 is absent.
+    """
+    if not devices:
+        return {}
+
+    testbed_cml2 = testbed_cml2 or {}
+    layout_cfg = testbed_cml2.get("layout", {})
+    engine_val = layout_cfg.get("engine") or layout_cfg.get("style", "auto")
+    engine = str(engine_val).lower() if engine_val else "auto"
+
+    has_explicit_or_tier = any(
+        getattr(d, "x", None) is not None or getattr(d, "tier", None) is not None for d in devices.values()
+    )
+
+    nodes_cfg = testbed_cml2.get("nodes", {})
+    has_testbed_nodes = bool(nodes_cfg)
+
+    # Legacy circular fallback: when engine is circular OR engine is auto with NO custom layout hints
+    if engine == "circular" or (engine == "auto" and not has_explicit_or_tier and not has_testbed_nodes and not layout_cfg):
+        circle_pos = calculate_node_positions(len(devices), radius=layout_cfg.get("radius", 200))
+        return {name: circle_pos[i] for i, name in enumerate(devices.keys())}
+
+    # If testbed has nodes defined, update devices with missing x/y/tier
+    if nodes_cfg:
+        for name, dev in devices.items():
+            if name in nodes_cfg:
+                n_meta = nodes_cfg[name]
+                if isinstance(n_meta, dict):
+                    if dev.x is None and "x" in n_meta:
+                        dev.x = n_meta["x"]
+                    if dev.y is None and "y" in n_meta:
+                        dev.y = n_meta["y"]
+                    if dev.tier is None and "tier" in n_meta:
+                        dev.tier = parse_tier(n_meta["tier"], device_name=name)
+
+    tier_spacing = layout_cfg.get("tier_spacing", 180)
+    node_spacing = layout_cfg.get("node_spacing", 360)
+    center_x = layout_cfg.get("center_x", 0)
+    center_y = layout_cfg.get("center_y", 20)
+
+    return calculate_hierarchical_positions(
+        devices,
+        tier_spacing=tier_spacing,
+        node_spacing=node_spacing,
+        center_x=center_x,
+        center_y=center_y,
+    )
+
+
+def generate_group_annotations(
+    groups_config: dict[str, Any],
+    node_positions: dict[str, tuple[int, int]],
+    default_padding: int = 60,
+) -> list[dict[str, Any]]:
+    """
+    Generates CML2 rectangle bounding boxes and embedded title text annotations
+    for administrative groups and areas.
+
+    Args:
+        groups_config: Dictionary mapping group_id to group configuration dicts.
+        node_positions: Mapping of device names to (x, y) coordinates.
+        default_padding: Default padding in pixels around member nodes.
+
+    Returns:
+        list[dict[str, Any]]: List of annotation payload dictionaries.
+    """
+    annotations = []
+
+    for group_id, grp in groups_config.items():
+        if not isinstance(grp, dict):
+            continue
+        members = grp.get("members") or grp.get("devices") or grp.get("nodes", [])
+        member_coords = [node_positions[m] for m in members if m in node_positions]
+        if not member_coords:
+            continue
+
+        pad = grp.get("padding", default_padding)
+        pad_x = grp.get("padding_x", pad)
+        pad_y = grp.get("padding_y", pad)
+
+        if len(member_coords) == 1:
+            half_w = grp.get("half_width", 140)
+            half_h = grp.get("half_height", 70)
+            x1 = float(member_coords[0][0] - half_w)
+            y1 = float(member_coords[0][1] - half_h)
+            w = float(half_w * 2)
+            h = float(half_h * 2)
+        else:
+            min_x = min(c[0] for c in member_coords)
+            max_x = max(c[0] for c in member_coords)
+            min_y = min(c[1] for c in member_coords)
+            max_y = max(c[1] for c in member_coords)
+            x1 = float(min_x - pad_x)
+            y1 = float(min_y - (pad_y + 5))
+            w = float((max_x - min_x) + (2 * pad_x))
+            h = float((max_y - min_y) + (2 * pad_y + 10))
+
+        # Allow explicit coordinate overrides from YAML
+        x1 = float(grp.get("x1", x1))
+        y1 = float(grp.get("y1", y1))
+        w = float(grp.get("x2", w))
+        h = float(grp.get("y2", h))
+
+        z_index = int(grp.get("z_index", 0))
+
+        # 1. Rectangle Bounding Box
+        annotations.append({
+            "type": "rectangle",
+            "x1": x1,
+            "y1": y1,
+            "x2": w,   # Width in pixels
+            "y2": h,   # Height in pixels
+            "color": grp.get("color", "#1094DFFF"),
+            "border_color": grp.get("border_color", "#808080FF"),
+            "border_style": grp.get("border_style", ""),
+            "border_radius": int(grp.get("border_radius", 30)),
+            "thickness": int(grp.get("thickness", 1)),
+            "z_index": z_index,
+        })
+
+        # 2. Embedded Title Annotation
+        title = grp.get("title", group_id)
+        if title:
+            annotations.append({
+                "type": "text",
+                "x1": x1 + 15.0,
+                "y1": y1 + 22.0,
+                "text_content": str(title),
+                "text_size": int(grp.get("title_size") or grp.get("title_font_size", 12)),
+                "text_font": "monospace",
+                "text_bold": bool(grp.get("title_bold", True)),
+                "text_italic": False,
+                "text_unit": "pt",
+                "color": grp.get("title_color", "#FFFFFFFF"),
+                "border_color": "#00000000",
+                "thickness": 1,
+                "z_index": z_index + 2,
+            })
+
+    return annotations
+
+
+def generate_node_and_link_annotations(
+    testbed: Any,
+    node_positions: dict[str, tuple[int, int]],
+    devices_info: dict[str, DeviceInfo] | None = None,
+    link_overrides: dict[str, Any] | None = None,
+    auto_ann_config: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Synthesizes per-node Loopback/role callouts and link midpoint subnet annotations.
+    """
+    annotations = []
+    devices_info = devices_info or {}
+    link_overrides = link_overrides or {}
+    auto_ann = auto_ann_config or {}
+
+    gen_callouts = auto_ann.get("node_callouts", True)
+    if "link_labels" in auto_ann:
+        gen_links = bool(auto_ann["link_labels"])
+    elif "subnets" in auto_ann:
+        gen_links = bool(auto_ann["subnets"])
+    else:
+        gen_links = True
+
+    # 1. Per-Node Callouts
+    if gen_callouts:
+        for dev_name, (nx, ny) in node_positions.items():
+            dev_obj = getattr(testbed, "devices", {}).get(dev_name)
+            dev_info = devices_info.get(dev_name)
+            if not dev_obj and not dev_info:
+                continue
+
+            # Query Loopback0 IP address
+            lo_ip = None
+            if dev_obj and hasattr(dev_obj, "topology") and hasattr(dev_obj.topology, "interfaces"):
+                for intf_name, intf in dev_obj.topology.interfaces.items():
+                    lower_name = intf_name.lower()
+                    if "loopback" in lower_name or lower_name in ("lo0", "loopback0") or lower_name.startswith("lo"):
+                        if getattr(intf, "ipv4", None):
+                            lo_ip = str(intf.ipv4)
+                            break
+
+            callout_lines = []
+            if lo_ip:
+                callout_lines.append(f"Lo0: {lo_ip}")
+            if dev_info and dev_info.role:
+                callout_lines.append(dev_info.role)
+            elif dev_obj and getattr(dev_obj, "role", None):
+                callout_lines.append(getattr(dev_obj, "role"))
+
+            # Check explicit callout override
+            custom_callout = dev_info.callout if dev_info else {}
+            if not custom_callout and dev_obj and hasattr(dev_obj, "custom"):
+                custom_callout = getattr(dev_obj, "custom", {}).get("cml2", {}).get("callout", {})
+
+            if isinstance(custom_callout, str):
+                custom_callout = {"text": custom_callout}
+
+            if custom_callout.get("text"):
+                text = str(custom_callout["text"])
+            elif callout_lines:
+                text = "\n".join(callout_lines)
+            else:
+                text = None
+
+            if text:
+                if nx < 0:
+                    default_ox, default_oy = -200.0, -15.0
+                elif nx > 0:
+                    default_ox, default_oy = 40.0, -15.0
+                else:
+                    default_ox, default_oy = 45.0, -12.0
+
+                ox = float(custom_callout.get("offset_x", default_ox))
+                oy = float(custom_callout.get("offset_y", default_oy))
+                ax = nx + ox
+                ay = ny + oy
+
+                annotations.append({
+                    "type": "text",
+                    "x1": float(ax),
+                    "y1": float(ay),
+                    "text_content": text,
+                    "text_size": int(custom_callout.get("text_size", 12)),
+                    "text_font": "monospace",
+                    "text_bold": bool(custom_callout.get("bold", False)),
+                    "text_italic": False,
+                    "text_unit": "pt",
+                    "color": custom_callout.get("color", "#333333FF"),
+                    "border_color": "#00000000",
+                    "z_index": int(custom_callout.get("z_index", 5)),
+                })
+
+    # 2. Pairwise Link Subnet Annotations
+    if gen_links and hasattr(testbed, "links") and testbed.links:
+        for link in testbed.links:
+            intfs = getattr(link, "interfaces", [])
+            if len(intfs) != 2:
+                continue
+
+            interfaces = sorted(intfs, key=lambda i: (getattr(getattr(i, "device", None), "name", ""), getattr(i, "name", "")))
+            i1, i2 = interfaces[0], interfaces[1]
+            d1 = getattr(getattr(i1, "device", None), "name", None)
+            d2 = getattr(getattr(i2, "device", None), "name", None)
+
+            if not d1 or not d2 or d1 not in node_positions or d2 not in node_positions:
+                continue
+
+            p1, p2 = node_positions[d1], node_positions[d2]
+            mid_x = (p1[0] + p2[0]) / 2.0
+            mid_y = (p1[1] + p2[1]) / 2.0
+
+            subnet_text = None
+            if getattr(i1, "ipv4", None):
+                try:
+                    net = ipaddress.ip_interface(str(i1.ipv4)).network
+                    subnet_text = str(net)
+                except Exception:
+                    subnet_text = str(i1.ipv4)
+            elif getattr(i2, "ipv4", None):
+                try:
+                    net = ipaddress.ip_interface(str(i2.ipv4)).network
+                    subnet_text = str(net)
+                except Exception:
+                    subnet_text = str(i2.ipv4)
+
+            link_alias = getattr(link, "alias", None) or getattr(link, "name", f"{d1}-{d2}")
+            override = link_overrides.get(link_alias, {})
+            if not override and getattr(link, "name", None) in link_overrides:
+                override = link_overrides[link.name]
+            if not override and f"{d1}-{d2}" in link_overrides:
+                override = link_overrides[f"{d1}-{d2}"]
+            if not override and f"{d2}-{d1}" in link_overrides:
+                override = link_overrides[f"{d2}-{d1}"]
+
+            override_label = override.get("label") or override.get("subnet")
+            if override_label:
+                subnet_text = str(override_label)
+
+            if not subnet_text:
+                continue
+
+            if "offset_x" in override or "offset_y" in override:
+                x1 = float(mid_x + override.get("offset_x", 0))
+                y1 = float(mid_y + override.get("offset_y", 0))
+            else:
+                dx = p2[0] - p1[0]
+                dy = p2[1] - p1[1]
+                length = math.hypot(dx, dy)
+                if length > 0:
+                    offset_dist = 22.0
+                    nx = -dy / length
+                    ny = dx / length
+                    lx = mid_x + (offset_dist * nx)
+                    ly = mid_y + (offset_dist * ny)
+                else:
+                    lx, ly = mid_x, mid_y - 20.0
+                x1 = float(lx - 40.0)
+                y1 = float(ly - 10.0)
+
+            annotations.append({
+                "type": "text",
+                "x1": x1,
+                "y1": y1,
+                "text_content": subnet_text,
+                "text_size": int(override.get("text_size", 11)),
+                "text_font": "monospace",
+                "text_bold": bool(override.get("bold", False)),
+                "text_italic": False,
+                "text_unit": "pt",
+                "color": override.get("color", "#808080FF"),
+                "border_color": "#00000000",
+                "z_index": int(override.get("z_index", 5)),
+            })
+
+    return annotations
+
+
+def apply_annotations(lab: Any, annotations_list: list[dict[str, Any]]) -> list[Any]:
+    """
+    Creates annotations in the CML2 lab from a list of annotation dictionaries.
+    Defensively strips invalid attributes (e.g., x2/y2 from text annotations)
+    and wraps API calls in exception handlers.
+
+    Args:
+        lab: virl2_client Lab instance.
+        annotations_list: List of annotation property dictionaries.
+
+    Returns:
+        list[Any]: List of created annotation instances.
+    """
+    created = []
+    for ann in annotations_list:
+        payload = dict(ann)
+        ann_type = payload.pop("type", "text")
+
+        # Sanitize text annotations
+        if ann_type == "text":
+            payload.pop("x2", None)
+            payload.pop("y2", None)
+            # Property aliasing
+            if "text" in payload and "text_content" not in payload:
+                payload["text_content"] = payload.pop("text")
+            if "font_size" in payload and "text_size" not in payload:
+                payload["text_size"] = payload.pop("font_size")
+            if "font_family" in payload and "text_font" not in payload:
+                payload["text_font"] = payload.pop("font_family")
+            if "bold" in payload and "text_bold" not in payload:
+                payload["text_bold"] = payload.pop("bold")
+            if "italic" in payload and "text_italic" not in payload:
+                payload["text_italic"] = payload.pop("italic")
+
+        try:
+            obj = lab.create_annotation(annotation_type=ann_type, **payload)
+            created.append(obj)
+        except Exception as e:
+            log.warning(f"Failed to create {ann_type} annotation with payload {payload}: {e}")
+
+    return created
+
+
+def update_lab_layout_and_annotations_in_place(
+    lab_or_client: Any,
+    testbed_or_lab_id: Any,
+    testbed: Any = None,
+    clean_existing: bool = True,
+    clear_existing_annotations: bool | None = None,
+    client: Any | None = None,
+) -> dict[str, Any]:
+    """
+    Applies hierarchical layout and visual annotations to an existing CML2 lab
+    without restarting nodes, disrupting active sessions, or tearing down peerings.
+
+    Args:
+        lab_or_client: virl2_client Lab instance, or ClientLibrary instance.
+        testbed_or_lab_id: pyATS Testbed instance, or lab ID string if client passed.
+        testbed: pyATS Testbed instance (when lab_or_client is client).
+        clean_existing: If True, deletes all prior annotations before creating new ones.
+        clear_existing_annotations: Alias for clean_existing.
+        client: Optional virl2_client ClientLibrary instance if lab is a string.
+
+    Returns:
+        dict[str, Any]: Dictionary containing:
+            - 'nodes_updated': Number of nodes whose coordinates were updated (int).
+            - 'annotations_created': List of created annotation objects/payloads (list).
+    """
+    should_clean = clear_existing_annotations if clear_existing_annotations is not None else clean_existing
+
+    if hasattr(lab_or_client, "join_existing_lab") and isinstance(testbed_or_lab_id, str):
+        c = lab_or_client
+        lab_id = testbed_or_lab_id
+        tb = testbed
+        lab_obj = c.join_existing_lab(lab_id)
+    elif isinstance(lab_or_client, str):
+        if client is None:
+            raise ValueError("client must be provided when lab is a string identifier")
+        lab_obj = client.join_existing_lab(lab_or_client)
+        tb = testbed_or_lab_id
+    else:
+        lab_obj = lab_or_client
+        tb = testbed_or_lab_id
+
+    if hasattr(lab_obj, "sync"):
+        lab_obj.sync()
+
+    if tb is None:
+        return {"nodes_updated": 0, "annotations_created": []}
+
+    parser = TestbedParser(tb)
+    devices = parser.get_devices()
+    testbed_cml2 = parser.get_custom_cml2()
+
+    # 1. Resolve Node Positions
+    positions = resolve_node_positions(devices, testbed_cml2)
+
+    # 2. Update Live Node Coordinates via setters / REST PATCH
+    updated_nodes_count = 0
+    if hasattr(lab_obj, "nodes"):
+        for node in lab_obj.nodes():
+            if node.label in positions:
+                tx, ty = positions[node.label]
+                if node.x != tx or node.y != ty:
+                    try:
+                        if hasattr(lab_obj, "_session") and hasattr(lab_obj, "id") and hasattr(node, "id"):
+                            url = f"labs/{lab_obj.id}/nodes/{node.id}"
+                            try:
+                                lab_obj._session.patch(url, json={"x": tx, "y": ty})
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    node_modified = False
+                    try:
+                        if node.x != tx:
+                            node.x = tx
+                            node_modified = True
+                        if node.y != ty:
+                            node.y = ty
+                            node_modified = True
+                        if node_modified:
+                            updated_nodes_count += 1
+                    except Exception as e:
+                        log.warning(f"Failed to update coordinates for node {node.label}: {e}")
+
+    # 3. Purge Existing Annotations if requested
+    if should_clean and hasattr(lab_obj, "annotations"):
+        for ann in list(lab_obj.annotations()):
+            try:
+                ann.remove()
+            except Exception as e:
+                log.warning(f"Failed to remove existing annotation {ann}: {e}")
+
+    # 4. Generate All New Annotations
+    all_annotations: list[dict[str, Any]] = []
+    if testbed_cml2:
+        auto_ann = testbed_cml2.get("auto_annotations", {})
+        auto_enabled = auto_ann.get("enabled", True)
+
+        if auto_enabled:
+            # Group / Area Bounding Boxes
+            if auto_ann.get("group_boxes", True):
+                groups = testbed_cml2.get("groups", {})
+                if groups:
+                    pad = auto_ann.get("default_padding", 60)
+                    all_annotations.extend(generate_group_annotations(groups, positions, default_padding=pad))
+
+            # Node Callouts & Link Subnets
+            link_overrides = testbed_cml2.get("links") or testbed_cml2.get("link_overrides", {})
+            all_annotations.extend(generate_node_and_link_annotations(
+                tb, positions, devices,
+                link_overrides=link_overrides,
+                auto_ann_config=auto_ann,
+            ))
+
+        # Raw Custom Annotations
+        raw_anns = testbed_cml2.get("annotations", [])
+        if raw_anns:
+            all_annotations.extend(raw_anns)
+
+    # 5. Apply Annotations
+    created = apply_annotations(lab_obj, all_annotations)
+    if hasattr(lab_obj, "sync"):
+        lab_obj.sync()
+
+    log.info(
+        f"Updated live lab '{getattr(lab_obj, 'title', 'cml2_lab')}': "
+        f"{updated_nodes_count} nodes repositioned, {len(created)} annotations created."
+    )
+    return {
+        "nodes_updated": updated_nodes_count,
+        "annotations_created": created,
+    }
+
+
 def get_node_definition(platform: str) -> str:
     """
     Get CML2 node definition for a platform.
@@ -339,6 +1003,14 @@ class TestbedParser:
         self.testbed = testbed
         self._devices: dict[str, DeviceInfo] | None = None
         self._links: list[LinkInfo] | None = None
+        self._custom_cml2: dict[str, Any] | None = None
+
+    def get_custom_cml2(self) -> dict[str, Any]:
+        """Extract testbed-level custom.cml2 metadata."""
+        if self._custom_cml2 is not None:
+            return self._custom_cml2
+        self._custom_cml2 = get_custom_cml2(self.testbed)
+        return self._custom_cml2
 
     @property
     def lab_name(self) -> str:
@@ -406,6 +1078,27 @@ class TestbedParser:
             # Get device alias
             device_alias = getattr(device, "alias", None)
 
+            # Hybrid layout and annotation extensions:
+            dev_cml2 = get_custom_cml2(device)
+            x = dev_cml2.get("x")
+            y = dev_cml2.get("y")
+            tier = dev_cml2.get("tier")
+            role = dev_cml2.get("role")
+            group = dev_cml2.get("group")
+            callout = dev_cml2.get("callout", {})
+            if isinstance(callout, str):
+                callout = {"text": callout}
+            elif not isinstance(callout, dict):
+                callout = {}
+
+            # Format coordinates cleanly
+            resolved_x = None
+            if x is not None:
+                resolved_x = int(x) if isinstance(x, int) or (isinstance(x, float) and x.is_integer()) else float(x)
+            resolved_y = None
+            if y is not None:
+                resolved_y = int(y) if isinstance(y, int) or (isinstance(y, float) and y.is_integer()) else float(y)
+
             self._devices[device_name] = DeviceInfo(
                 name=device_name,
                 platform=platform,
@@ -413,6 +1106,12 @@ class TestbedParser:
                 type=device_type or "router",
                 alias=device_alias,
                 credentials=credentials,
+                x=resolved_x,
+                y=resolved_y,
+                tier=parse_tier(tier, device_name=device_name),
+                role=str(role) if role is not None else None,
+                group=str(group) if group is not None else None,
+                callout=callout,
             )
 
         # Log summary of skipped devices
@@ -546,12 +1245,16 @@ class CML2LabBuilder:
         devices: dict[str, DeviceInfo],
         links: list[LinkInfo],
         alias_map: dict[str, str] | None = None,
+        testbed: Testbed | None = None,
+        custom_cml2: dict[str, Any] | None = None,
     ) -> None:
         self.client = client
         self.lab_name = lab_name
         self.devices = devices
         self.links = links
         self.alias_map = alias_map or {}  # alias -> actual device name
+        self.testbed = testbed
+        self.custom_cml2 = custom_cml2 or (get_custom_cml2(testbed) if testbed else {})
         self.lab: Lab | None = None
         self.node_map: dict[str, Node] = {}
         # Maps (device_name, original_interface) -> cml2_interface_name
@@ -586,6 +1289,9 @@ class CML2LabBuilder:
             # Create links
             self._create_links()
 
+            # Create visual annotations
+            self._create_annotations()
+
             return self.lab
 
         except Exception as e:
@@ -599,14 +1305,14 @@ class CML2LabBuilder:
             raise
 
     def _create_nodes(self) -> None:
-        """Create all nodes in the lab."""
-        positions = calculate_node_positions(len(self.devices))
+        """Create all nodes in the lab using resolved coordinates."""
+        positions = resolve_node_positions(self.devices, self.custom_cml2)
 
-        for i, (device_name, device_info) in enumerate(self.devices.items()):
+        for device_name, device_info in self.devices.items():
             node_definition = get_node_definition(device_info.platform)
-            x, y = positions[i] if i < len(positions) else (0, 0)
+            x, y = positions.get(device_name, (0, 0))
 
-            log.info(f"Creating node: {device_name} ({node_definition})")
+            log.info(f"Creating node: {device_name} ({node_definition}) at ({x}, {y})")
 
             node = self.lab.create_node(
                 label=device_name,
@@ -617,6 +1323,37 @@ class CML2LabBuilder:
             )
             self.node_map[device_name] = node
             log.info(f"  Created node ID: {node.id}")
+
+    def _create_annotations(self) -> None:
+        """Create all visual annotations on the new lab."""
+        if not self.custom_cml2 or not self.lab:
+            return
+
+        positions = {dev_name: (node.x, node.y) for dev_name, node in self.node_map.items()}
+        all_annotations: list[dict[str, Any]] = []
+
+        auto_ann = self.custom_cml2.get("auto_annotations", {})
+        if auto_ann.get("enabled", True):
+            if auto_ann.get("group_boxes", True):
+                groups = self.custom_cml2.get("groups", {})
+                if groups:
+                    pad = auto_ann.get("default_padding", 60)
+                    all_annotations.extend(generate_group_annotations(groups, positions, default_padding=pad))
+
+            if self.testbed:
+                link_overrides = self.custom_cml2.get("links") or self.custom_cml2.get("link_overrides", {})
+                all_annotations.extend(generate_node_and_link_annotations(
+                    self.testbed, positions, self.devices,
+                    link_overrides=link_overrides,
+                    auto_ann_config=auto_ann,
+                ))
+
+        raw_anns = self.custom_cml2.get("annotations", [])
+        if raw_anns:
+            all_annotations.extend(raw_anns)
+
+        if all_annotations:
+            apply_annotations(self.lab, all_annotations)
 
     def _get_interface_by_slot(self, node: Node, slot: int) -> Interface | None:
         """Get interface by slot number."""
@@ -1055,7 +1792,14 @@ class CML2Plugin(BasePlugin):
             alias_map = parser.get_alias_map()
 
             # Create and start lab
-            builder = CML2LabBuilder(self.client, lab_name, devices, links, alias_map)
+            builder = CML2LabBuilder(
+                self.client,
+                lab_name,
+                devices,
+                links,
+                alias_map,
+                testbed=self.original_testbed,
+            )
             self.lab = builder.build()
 
             # Apply initial configuration if enabled
